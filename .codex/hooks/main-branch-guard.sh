@@ -4,7 +4,7 @@
 # Claude-only logging/hook-profile scaffolding that Codex does not provide.
 #
 # Refuses HEAD-mutating commands at REPO_ROOT that lack an explicit worktree
-# delegation prefix (git -C <wt> / cd <wt> && / --git-dir=<wt>), and blocks
+# `git -C <literal-wt>` or `cd <literal-wt> && gh pr create` delegation, and blocks
 # destructive verbs without a live confirmation token. Reads the tool payload
 # on stdin ({"tool_name","tool_input":{"command"}}); exit 2 blocks the call.
 #
@@ -47,7 +47,7 @@ _mbg_destructive_block() {
 _mbg_forbidden_block() {
   printf 'BLOCKED: REPO_ROOT HEAD must stay on `main`. The command:\n  %s\n' "$(_mbg_redact "$COMMAND")" >&2
   printf 'contains a HEAD-mutating clause without a delegation prefix.\n' >&2
-  printf 'Use a delegation prefix: `cd "$WT" && ...`, `git -C "$WT" ...`, or `git --git-dir="$WT/.git" ...`\n' >&2
+  printf 'Use a literal absolute registered-worktree path: `cd /absolute/registered-worktree && gh pr create ...` or `git -C /absolute/registered-worktree ...`.\n' >&2
   printf 'See AGENTS.md § Iron Laws (Main-Branch Invariant).\n' >&2
   exit 2
 }

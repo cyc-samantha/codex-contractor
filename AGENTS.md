@@ -289,7 +289,7 @@ on it; if absent, apply the corresponding discipline manually.**
 
 | Hook | Event | What it blocks |
 |---|---|---|
-| `.codex/hooks/main-branch-guard.sh` | `PreToolUse:Bash` | Bare HEAD-mutating git verbs at REPO_ROOT without a worktree-delegation prefix (`git -C <wt> …`, `cd <wt> && …`) — `git checkout`/`switch`/`reset --hard`/`merge`/`rebase`, `gh pr create`, and the same destructive-verb list below. |
+| `.codex/hooks/main-branch-guard.sh` | `PreToolUse:Bash` | Bare HEAD-mutating git verbs at REPO_ROOT without a worktree-delegation prefix (`git -C <literal-wt> …`; PR creation only: `cd <literal-wt> && gh pr create …`) — `git checkout`/`switch`/`reset --hard`/`merge`/`rebase`, `gh pr create`, and the same destructive-verb list below. |
 | `.codex/hooks/code-shape-check.sh`, `function-body-check.sh`, `comment-smell-check.sh` | `PostToolUse:Write\|Edit` | Code shape violations (see § Code Shape Rules below) and WHAT-only comments on new/changed lines. |
 | `.codex/hooks/worktree-reaper.sh` | `SessionStart` | (Maintenance, not a gate — always exits 0.) Reaps provably-safe orphaned worktrees under `.claude/worktrees/`. |
 | `.codex/hooks/learning-gc.sh` | `SessionStart` | (Maintenance, not a gate.) Delegates to the shared-root GC engine so the learning log doesn't grow unbounded. |
@@ -316,15 +316,18 @@ worktree prefix is still required for HEAD-mutating verbs) — the two
 checks are independent.
 
 **Defense-in-depth mirror.** `.codex/rules/harness-destructive.rules`
-mirrors the same verb list as `prefix_rule(...)` entries — Codex's `.rules`
+mirrors the context-free subset of the verb list as `prefix_rule(...)`
+entries — Codex's `.rules`
 / `prefix_rule` mechanism is explicitly marked **experimental** by OpenAI
 ("Rules are experimental and may change"), so this file is a coarse
 second layer, never the sole enforcement. `prefix_rule` can only match an
 argv prefix — it cannot express "only when the target is `main`" or
-"unless delegated to a registered worktree," so the `.rules` file forbids
-the whole verb unconditionally while the hook admits the safe,
-worktree-delegated forms. If `.codex/rules/` is ever removed, the hook
-still enforces on its own.
+"unless delegated to a registered worktree." Context-dependent operations
+such as `gh pr create` are therefore enforced by the hook alone; a blanket
+`.rules` entry would block the safe registered-worktree form before the hook
+could evaluate it. Other listed verbs remain coarse-forbidden as
+defense-in-depth. If `.codex/rules/` is ever removed, the hook still enforces
+on its own.
 
 **Maintenance-hook bypass escape hatches** (SessionStart hooks only —
 these are housekeeping, never a security gate, so they degrade gracefully
@@ -393,7 +396,12 @@ as authoritative and this section's list as the binding subset.
   sensitive-file leakage.
 - **REPO_ROOT HEAD stays on `main` for the entire duration of every
   session's work.** All HEAD-mutating git commands run via worktree
-  delegation (`git -C "$WORKTREE" …` or `(cd "$WORKTREE" && …)`). Bare
+  delegation with the literal absolute registered-worktree path embedded in
+  the command (`git -C /absolute/registered-worktree …`). PR creation uses
+  `cd /absolute/registered-worktree && gh pr create …`; no other command is
+  allowed behind the `cd` delegation form. Variable-shaped
+  targets such as `$WORKTREE` are deliberately blocked because the guard
+  cannot prove their value from the command string. Bare
   `git checkout`/`switch`/`reset --hard`/`merge`/`rebase`/`gh pr create` are
   blocked by `main-branch-guard.sh` (see Iron Law 4 and § Non-LLM Gates on
   Destructive Verbs, above).

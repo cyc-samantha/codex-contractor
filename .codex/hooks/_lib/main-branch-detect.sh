@@ -148,12 +148,9 @@ _mbd_target_is_valid_worktree() {
   target=$(printf '%s' "${target:-}" | sed -E "s/^'(.*)'$/\\1/")
   # Empty after dequote → deny.
   [[ -z "${target:-}" ]] && return 1
-  # Variable reference (starts with $) → allow plain $VAR / ${VAR} at parse time.
-  # Deny command-substitution $(...) and backtick forms — they expand to real paths.
-  if [[ "${target:0:1}" = '$' ]]; then
-    [[ "${target:0:2}" = '$(' ]] && return 1  # command substitution → deny
-    return 0
-  fi
+  # Variable targets are unevaluable from the command string and therefore
+  # cannot prove registered-worktree identity.
+  [[ "${target:0:1}" = '$' ]] && return 1
   # Backtick command substitution anywhere in target → deny.
   [[ "$target" == *'`'* ]] && return 1
   # Require python3 for canonical path resolution; fail-CLOSED if absent
@@ -246,10 +243,20 @@ _mbd_any_clause_forbidden() {
   done < <(split_clauses "$1")
   return 1
 }
+_mbd_is_safe_cd_delegation() {
+  local remainder
+  remainder=$(printf '%s' "$1" | sed -E 's#^[[:space:]]*\(?[[:space:]]*cd[[:space:]]+[^[:space:]]+[[:space:]]*&&[[:space:]]*##')
+  LC_ALL=C printf '%s' "$remainder" | grep -q '[[:cntrl:]]' && return 1
+  [[ "$remainder" =~ ^gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$) ]] || return 1
+  [[ "$remainder" == *'&'* || "$remainder" == *';'* || "$remainder" == *'|'* ]] && return 1
+  [[ "$remainder" == *'('* || "$remainder" == *')'* || "$remainder" == *'`'* ]] && return 1
+  return 0
+}
 is_forbidden_command() {
   if [[ "$1" =~ $(_mbd_cd_prefix_re) ]]; then
-    _mbd_target_is_valid_worktree "$(_mbd_extract_cd_target "$1")" && return 1
-    # cd target invalid — fall through to clause-level check below.
+    _mbd_target_is_valid_worktree "$(_mbd_extract_cd_target "$1")" || return 0
+    _mbd_is_safe_cd_delegation "$1" && return 1
+    return 0
   fi
   local stripped; stripped=$(_mbd_strip_filter_tails "$1")
   _mbd_any_clause_forbidden "$stripped"

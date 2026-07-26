@@ -18,8 +18,10 @@
 # Verbs). This file is a mirror, not the source of truth.
 
 # --- HEAD-mutating git verbs (Iron Law 4 companion) ---
-# The hook allows delegated forms (git -C <wt> …, cd <wt> && …); prefix_rule
-# cannot, so these are advisory-forbidden and the hook admits the safe forms.
+# The hook allows literal `git -C <wt> …` delegation and, for PR creation
+# only, `cd <wt> && gh pr create …`; prefix_rule cannot express those contexts.
+# `gh pr create` is intentionally absent: blanket-forbidding it prevents the
+# registered-worktree form from ever reaching the context-aware hook.
 prefix_rule(pattern=["git", "checkout"], decision="forbidden")
 prefix_rule(pattern=["git", "switch"], decision="forbidden")
 prefix_rule(pattern=["git", "reset", "--hard"], decision="forbidden")
@@ -27,7 +29,6 @@ prefix_rule(pattern=["git", "merge"], decision="forbidden")
 prefix_rule(pattern=["git", "rebase"], decision="forbidden")
 prefix_rule(pattern=["git", "update-ref", "refs/heads/main"], decision="forbidden")
 prefix_rule(pattern=["git", "symbolic-ref", "HEAD"], decision="forbidden")
-prefix_rule(pattern=["gh", "pr", "create"], decision="forbidden")
 
 # --- Destructive verbs (PocketOS Apr 27 2026 incident gate) ---
 # Volume / cloud storage / infra deletion.
