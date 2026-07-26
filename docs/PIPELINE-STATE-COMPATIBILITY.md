@@ -77,6 +77,25 @@ and must fail closed when a transition requires one of them. It must not
 invent values. A future writer upgrades state only into the canonical
 per-task path and never overwrites the legacy input in place.
 
+## Harness-gate baseline version 1
+
+Fixture: `baseline.json`.
+
+This artifact pins the safety-kernel verification commands that were green
+before standalone runtime work began. It is a test baseline, not task state,
+and is not written beneath a canonical task directory.
+
+| Field | Requirement | Compatibility meaning |
+|---|---|---|
+| `schema_version` | Required | Must equal `1`. |
+| `suite` | Required | Names the pinned verification suite. |
+| `captured_from` | Required | Exact Git commit from which the baseline was recorded. |
+| `commands` | Required | Complete commands that reproduce the pinned harness-gate baseline. |
+
+Future slices may add checks to the suite, but they must continue to run the
+pinned hook JSON validation, shellcheck command, and complete Bats shell
+suite. A passing subset does not replace this baseline.
+
 ## Build result version 1
 
 Fixture: `build-result.json`.
