@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "agent_role": "software-engineer",
+  "base_sha": "0000000000000000000000000000000000000000",
+  "branch": "feat/fixture-task-active",
+  "generated_at": "2000-01-01T00:10:00Z",
+  "green": true,
+  "head_sha": "1111111111111111111111111111111111111111",
+  "tests_executed": ["synthetic-test"],
+  "unresolved": [],
+  "verdict": "BUILD_COMPLETE"
+}
