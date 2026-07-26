@@ -1,5 +1,52 @@
 # codex-harness — Global Playbook
 
+## Standalone Transition Directive
+
+This section takes precedence over fallback-contractor, inline-self-review,
+and executable-roadmap statements elsewhere in this file while the standalone
+transition is in progress.
+
+The approved target behavior is defined by:
+
+- `docs/STANDALONE-CODEX-HARNESS-SPEC.md`
+- `docs/STANDALONE-CODEX-HARNESS-IMPLEMENTATION-PLAN.md`
+
+`PLAN.md` is historical port context and is not the executable roadmap.
+
+Apply these workflow rules now:
+
+- Classify work as Discuss, Small Change, Build, or High Risk using the
+  approved specification. Classification is manual until the deterministic
+  gear router lands.
+- Keep every implementation task small enough for one focused,
+  independently verifiable PR.
+- Use a fresh read-only reviewer for formal review. Builder self-review does
+  not satisfy the review gate.
+- For security-relevant work, obtain fresh security sign-off before code
+  review. Re-run security review when later fixes touch a sensitive surface.
+- Return findings to the original engineer, then run targeted re-review with
+  the raising reviewer.
+- Use fresh verification bound to the final reviewed Git HEAD.
+- Attempt PR creation once per task run. Do not retry automatically after a
+  failed attempt without recorded human authorization.
+- Stop after opening the PR. A human reviews and merges it.
+
+Do not claim that the following target capabilities exist before their
+implementation tasks merge:
+
+- canonical shared-state writers owned by Codex;
+- automatic task discovery or resume;
+- per-task atomic writer claims;
+- deterministic gear routing;
+- automatic observation or spawn-token telemetry;
+- automatic cross-harness compatibility enforcement.
+
+Until those capabilities land, preserve the existing safety hooks,
+main-branch invariant, explicit worktree protocol, commit discipline, and
+fail-closed behavior below. Existing `HANDOFF.md` and `ACTIVE_HARNESS`
+mechanisms are migration-compatible inputs, not the target pipeline SSOT or
+long-term concurrency authority.
+
 This is the codex-harness global playbook: the merged equivalent of the
 Claude harness's `CLAUDE.md` + `rules/core.md`, ported onto Codex CLI's
 native `AGENTS.md` autoload chain (global `~/.codex/AGENTS.md` → repo root →

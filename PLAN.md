@@ -1,5 +1,19 @@
 # Codex-Harness Port Plan
 
+> **Historical document — superseded as an executable roadmap.**
+>
+> This file records the original full-port design, the later contractor
+> pivot, and completed CX work. It contains mutually historical architecture
+> states and must not be used to decide the next implementation task.
+>
+> The approved target and current executable roadmap are:
+>
+> - `docs/STANDALONE-CODEX-HARNESS-SPEC.md`
+> - `docs/STANDALONE-CODEX-HARNESS-IMPLEMENTATION-PLAN.md`
+>
+> The next planned implementation task is T00. Standalone capability must not
+> be claimed until its required tasks and the T32 activation gate are merged.
+
 
 Porting the Claude Code harness at `/home/samanthachen/git/.claude` (skills, agent
 team, enforcement hooks, memory/recall, continuous learning, internal eval) onto
@@ -801,4 +815,3 @@ The codex-harness port is DONE when ALL of the following hold:
 - The Risks & Known Losses section (§7) is reviewed by a human before the
   first production shift on codex-harness — this is a plan-review gate,
   not a mechanically-checkable one.
-
