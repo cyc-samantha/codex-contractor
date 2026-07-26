@@ -121,12 +121,13 @@ fixture_audit() {
 }
 
 @test "fixtures contain synthetic identities and no private runtime paths" {
-  run rg -n \
+  run grep -R -n -E -- \
     '(/home/|samanthachen|build-cfd-advisor|s1-ohlcv|cfd-advisor|edinplane)' \
     "$FIXTURES"
 
   [ "$status" -eq 1 ]
-  run rg -n 'fixture-task|/synthetic/repository|fixture-worktree' "$FIXTURES"
+  run grep -R -n -E -- \
+    'fixture-task|/synthetic/repository|fixture-worktree' "$FIXTURES"
   [ "$status" -eq 0 ]
 }
 
