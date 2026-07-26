@@ -1,0 +1,11 @@
+schema_version: 1
+task_id: fixture-task-completed
+repository: /synthetic/repository
+phase: ship
+status: completed
+verdict: merged
+branch: feat/fixture-task-completed
+worktree: /synthetic/repository/.claude/worktrees/fixture-worktree-completed
+updated_at: 2000-01-02T00:00:00Z
+updated_by: claude
+next_action: None.

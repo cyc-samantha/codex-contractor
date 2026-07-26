@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "task_id": "fixture-task-active",
+  "git_head": "1111111111111111111111111111111111111111",
+  "generated_at": "2000-01-01T00:20:00Z",
+  "verdict": "VERIFIED",
+  "tier_results": [{"tier": 0, "status": "passed"}],
+  "sandbox_run": true
+}
