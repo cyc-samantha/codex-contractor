@@ -29,6 +29,74 @@ approved slice contract
 
 Documentation-only slices use the recorded `docs_only` TDD exception.
 
+### Target runtime responsibilities
+
+The standalone runtime uses a lightweight coordinator, not a general
+orchestration service. These are target contracts and must not be described as
+active until their focused implementation tasks merge.
+
+| Role | Responsibility | Write authority |
+|---|---|---|
+| Orchestrator | Intake, scope and boundary checks, planning, dispatch, state transitions, gate decisions, PR coordination | Coordination state, dispatch contracts, PR artifacts, and observation artifacts only; never source, tests, or migrations |
+| Software Engineer | TDD implementation in the claimed worktree and every fix raised by review | Files allowed by the approved task contract |
+| Code Reviewer | Fresh-context review of the approved contract, immutable target, diff, and evidence | Read-only |
+| Security Reviewer | Fresh threat-focused review and required security sign-off | Read-only |
+| Verifier | Deterministic execution of the approved verification contract against the final reviewed HEAD | Read-only except explicitly enumerated disposable test output |
+
+The orchestrator routes findings back to the same Software Engineer identity
+and session; it never fixes implementation findings itself. Any engineer
+change invalidates affected approval and verification evidence. Re-review
+returns to the same reviewer identity and session that raised the finding.
+
+Each dispatch contract binds task ID, repository identity, branch, registered
+worktree, base and target HEAD, allowed and prohibited paths, acceptance
+criteria, required tests, risk classification, role, model, reasoning effort,
+write authority, and a stable role identity and session ID. Review evidence
+binds `software_engineer_id` and `software_engineer_session_id`; each finding
+also binds `raising_reviewer_id` and `raising_reviewer_session_id`. Missing or
+contradictory required fields fail closed.
+
+### Target model and reasoning-effort policy
+
+Use one model family initially. Multi-model routing remains disabled until
+spawn telemetry provides evidence that its quality or cost benefit justifies
+the added variable.
+
+Reasoning effort is selected deterministically from role and gear, not chosen
+ad hoc by the spawned agent:
+
+| Base role and gear | Default reasoning effort |
+|---|---|
+| Orchestrator intake, routing, and state transitions | `medium` |
+| Brainstorm, specification, and planning | `high` |
+| Small Change Software Engineer | `medium` |
+| Build Software Engineer | `high` |
+| Code Reviewer | `high` |
+| Security Reviewer | `high` |
+| Deterministic Verifier | `low` |
+| PR and observation artifact generation | `low` |
+
+High Risk applies these overrides:
+
+| High Risk role | Required reasoning effort |
+|---|---|
+| Software Engineer | `xhigh` |
+| Code Reviewer | `xhigh` |
+| Security Reviewer | `xhigh` |
+| Deterministic Verifier | `low` |
+
+Resolution precedence is exact: select the base role-and-gear value, then
+apply a matching High Risk override. The High Risk override wins. No agent or
+fallback may silently lower the resolved effort.
+
+Model or effort unavailability follows a versioned deterministic fallback
+table. Every fallback records requested and actual model and effort, reason,
+and policy version. A gating reviewer, security reviewer, or verifier fails
+closed when no pre-authorized equivalent at the required minimum is
+available. A non-gating mechanical role may use only an explicitly
+pre-authorized fallback; otherwise it also stops for human direction. Agents
+cannot invent a fallback or enable multi-model routing themselves.
+
 ### PR-sized task invariant
 
 Every implementation task must be small enough to produce one focused PR.
@@ -120,6 +188,20 @@ reviewed.
 
 Existing main-branch, destructive-command, code-shape, and worktree safety
 tests remain green. New orchestration paths cannot bypass them.
+
+### AC-13: Separated orchestration
+
+The orchestrator cannot write source, tests, or migrations. It may write only
+enumerated coordination, dispatch, PR, and observation artifacts. The
+Software Engineer owns implementation and all reviewer fixes; formal
+reviewers and the verifier remain fresh/read-only as specified.
+
+### AC-14: Deterministic role execution policy
+
+Role and gear resolve deterministically to model family, reasoning effort,
+permissions, and fallback behavior. Gating roles fail closed when their
+required execution profile is unavailable. Requested and actual execution
+profiles are captured without enabling multi-model routing.
 
 ## 3. Slice 0: Baseline and Compatibility Fixtures
 
@@ -307,35 +389,56 @@ tests/test_task_discovery.py
 - Stale prose never overrides Git or test reality.
 - New tasks use the same canonical format as compatible existing tasks.
 
-## 8. Slice 5: Minimal Agent Workflow
+## 8. Slice 5: Lightweight Orchestrator and Agent Workflow
 
 ### Objective
 
-Implement the required Software Engineer and fresh reviewer loop without a
-large role team.
+Separate coordination from engineering, then implement the required Software
+Engineer and fresh reviewer loop without a large role team.
 
 ### Work
 
 1. Define minimal role contracts for:
+   - orchestrator;
    - Software Engineer;
    - code reviewer;
-   - security reviewer.
-2. Dispatch the Software Engineer into the claimed task worktree.
-3. Dispatch reviewers with read-only permission and fresh context.
-4. Bind review input to actual task, branch, and HEAD.
-5. Return findings to the same engineer role and worktree.
-6. Route targeted re-review to the raising reviewer.
-7. Invalidate approvals when the reviewed HEAD changes.
-8. Capture per-spawn result and identity in trajectory state.
+   - security reviewer;
+   - verifier.
+2. Define a versioned dispatch contract that binds scope, identity, Git
+   target, risk, verification, role, execution profile, and permissions.
+3. Enforce the orchestrator protected-write boundary while allowing only
+   enumerated coordination, dispatch, PR, and observation artifacts.
+4. Resolve model, reasoning effort, permissions, and fallback behavior from a
+   deterministic role-and-gear policy.
+5. Keep all roles on one model family until telemetry supports a later change.
+6. Dispatch the Software Engineer into the claimed task worktree.
+7. Dispatch reviewers with read-only permission and fresh context.
+8. Bind review input to actual task, branch, and HEAD.
+9. Bind review evidence and findings to stable engineer and reviewer identity
+   and session IDs.
+10. Return findings to the exact `software_engineer_id` and
+    `software_engineer_session_id` in the same worktree.
+11. Route targeted re-review to the exact `raising_reviewer_id` and
+    `raising_reviewer_session_id`.
+12. Invalidate approvals when the reviewed HEAD changes.
+13. Dispatch deterministic verification read-only against the approved HEAD.
+14. Capture requested and actual execution profile, result, and identity in
+    trajectory state.
 
 ### Candidate files
 
 ```text
+.codex/agents/orchestrator.toml
 .codex/agents/software-engineer.toml
 .codex/agents/code-reviewer.toml
 .codex/agents/security-reviewer.toml
+.codex/agents/verifier.toml
 .agents/skills/harness-pipeline/SKILL.md
+scripts/lib/dispatch_contract.py
+scripts/lib/execution_policy.py
 scripts/lib/review_evidence.py
+tests/test_dispatch_contract.py
+tests/test_execution_policy.py
 tests/test_review_evidence.py
 ```
 
@@ -345,10 +448,20 @@ process orchestrator.
 
 ### Verification
 
-- Builder identity cannot produce an accepted formal review.
+- Orchestrator writes to source, tests, and migrations are blocked.
+- Enumerated coordination artifacts remain writable by the orchestrator.
+- Incomplete or contradictory dispatch contracts fail closed.
+- Role and gear produce the documented effort and permission profile.
+- An unavailable gating execution profile fails closed rather than silently
+  lowering effort or changing model family.
+- Software Engineer identity cannot produce an accepted formal review.
 - Reviewer execution cannot modify the repository.
-- Findings bind to task and reviewed HEAD.
-- A fix invalidates prior approval and triggers targeted re-review.
+- Findings bind to task, reviewed HEAD, exact Software Engineer identity and
+  session, and exact raising reviewer identity and session.
+- The bound Software Engineer instance fixes findings; a fix invalidates prior
+  approval and triggers targeted re-review by the bound raising reviewer
+  instance.
+- Verifier execution is deterministic and cannot modify tracked files.
 
 ## 9. Slice 6: Security Routing and Sign-Off
 
@@ -429,13 +542,16 @@ automatic promotion.
 ### Work
 
 1. Define a versioned privacy-safe spawn event.
-2. Capture token fields exposed by the provider.
-3. Record unavailable metrics as `null` with reason.
-4. Mark estimates with method and provenance.
-5. Record learning/memory injection token size.
-6. Append task observations automatically.
-7. Run learning candidate extraction in shadow mode.
-8. Add the versioned evaluation method and report template.
+2. Record role, gear, policy version, requested and actual model and reasoning
+   effort, and any fallback reason.
+3. Capture token fields exposed by the provider.
+4. Record input, cached-input, output, and injected-learning tokens.
+5. Record duration, verdict, review finding count, and retry count.
+6. Record unavailable metrics as `null` with reason.
+7. Mark estimates with method and provenance.
+8. Append task observations automatically.
+9. Run learning candidate extraction in shadow mode.
+10. Add the versioned evaluation method and report template.
 
 ### Candidate files
 
@@ -454,6 +570,9 @@ hook registration. Do not fabricate metrics to satisfy the schema.
 ### Later evaluation questions
 
 - Token overhead per role and phase.
+- Quality and finding-rate differences by role and reasoning effort.
+- Whether an approved effort fallback changes verdict, findings, or retries.
+- Whether evidence supports introducing any multi-model route.
 - Learning-injection tokens as a percentage of input.
 - Review findings prevented by injected learning.
 - Retry and failure rates with and without learning candidates.
@@ -519,42 +638,50 @@ Finish migration without deleting historical runtime state.
 The slices above are capability groups, not implementation task boundaries.
 Implement them through the following focused PRs.
 
-| Task | One-PR outcome | Depends on |
-|---|---|---|
-| T00 | Add synthetic state fixtures and pin the existing test baseline | none |
-| T01 | Document the versioned pipeline compatibility matrix | T00 |
-| T02 | Document the proposed standalone transition without claiming it is active | T01 |
-| T03 | Add Discuss/Small Change/Build routing plus manual High Risk elevation | T01 |
-| T04 | Add Small Change compact-spec and approval behavior | T03 |
-| T05 | Read canonical pipeline paths and supported legacy paths | T01 |
-| T06 | Validate pipeline identity, versions, and required fields | T05 |
-| T07 | Write canonical pipeline state atomically | T06 |
-| T08 | Discover repository-matching tasks read-only | T07 |
-| T09 | Add human-confirmed new-task and resume selection | T08 |
-| T10 | Acquire one atomic writer claim per task | T07 |
-| T11 | Add identity-safe claim heartbeat and release | T10 |
-| T12 | Add human-confirmed claim takeover and trajectory archive | T11 |
-| T13 | Define and dispatch the Software Engineer into the claimed worktree | T09, T11 |
-| T14 | Add fresh read-only code review bound to task and HEAD | T13 |
-| T15 | Return findings to the same engineer and run targeted re-review | T14 |
-| T16 | Add automatic High Risk triggers and human-authorized downgrade enforcement | T04 |
-| T17 | Add security-first review, sign-off, and invalidation | T15, T16 |
-| T18 | Write verification evidence bound to reviewed HEAD | T15 |
-| T19 | Derive and run task-appropriate final verification commands | T18 |
-| T20 | Add one-attempt PR state and existing-PR reconciliation | T19 |
-| T21 | Attempt PR creation once and preserve manual handoff on failure | T20 |
-| T22 | Emit privacy-safe per-spawn token telemetry in shadow mode | T13 |
-| T23 | Append observations automatically without promoting instincts | T22 |
-| T24 | Add the token/learning evaluation framework and report template | T23 |
-| T25 | Reuse shared evidence types in Builder-Guardian | T17, T19 |
-| T26 | Route High Risk tasks to optional immutable evidence mode | T25 |
-| T27 | Constrain garbage collection to disposable task artifacts | T07 |
-| T28 | Add migration warnings and legacy-baton compatibility behavior | T21, T26 |
-| T29 | Document installation, runtime operation, and recovery | T28 |
-| T30 | Remove stale fallback-era references after a repository-wide audit | T29 |
-| T31 | Add an automated synthetic cross-harness round-trip test and privacy-safe result | T30, Claude alignment complete |
-| T32 | Remove final fallback identity and declare standalone behavior active | T12, T21, T23, T24, T27, T30, T31 |
-| T33 | Publish the first evidence-based token/learning evaluation | T24, evaluation sample met |
+This plan-only governance change does not implement a runtime capability and
+does not consume a capability task ID. T00 is complete. After this governance
+PR is human-confirmed merged, T01 remains the next capability task.
+
+| Task | Status | One-PR outcome | Depends on |
+|---|---|---|---|
+| T00 | Complete | Add synthetic state fixtures and pin the existing test baseline | none |
+| T01 | Next | Document the versioned pipeline compatibility matrix | T00 |
+| T02 | Planned | Document the proposed standalone transition without claiming it is active | T01 |
+| T03 | Planned | Add Discuss/Small Change/Build routing plus manual High Risk elevation | T01 |
+| T04 | Planned | Add Small Change compact-spec and approval behavior | T03 |
+| T05 | Planned | Read canonical pipeline paths and supported legacy paths | T01 |
+| T06 | Planned | Validate pipeline identity, versions, and required fields | T05 |
+| T07 | Planned | Write canonical pipeline state atomically | T06 |
+| T08 | Planned | Discover repository-matching tasks read-only | T07 |
+| T09 | Planned | Add human-confirmed new-task and resume selection | T08 |
+| T10 | Planned | Acquire one atomic writer claim per task | T07 |
+| T11 | Planned | Add identity-safe claim heartbeat and release | T10 |
+| T12 | Planned | Add human-confirmed claim takeover and trajectory archive | T11 |
+| T13 | Planned | Define versioned role dispatch contracts with stable engineer and reviewer instance identities | T09, T11 |
+| T13A | Planned | Enforce the orchestrator protected-write boundary and coordination-artifact allowlist | T13 |
+| T13B | Planned | Add deterministic base-plus-High-Risk model-effort precedence and fail-closed fallback handling | T13 |
+| T13C | Planned | Dispatch the Software Engineer into the claimed worktree under the approved contract | T13A, T13B |
+| T14 | Planned | Add fresh read-only code review bound to task and HEAD | T13C |
+| T15 | Planned | Return findings to the bound engineer instance and targeted re-review to the bound raising reviewer instance | T14 |
+| T16 | Planned | Add automatic High Risk triggers and human-authorized downgrade enforcement | T04 |
+| T17 | Planned | Add security-first review, sign-off, and invalidation | T15, T16 |
+| T18 | Planned | Write verification evidence bound to reviewed HEAD | T15 |
+| T18A | Planned | Dispatch the deterministic verifier read-only against the approved verification contract | T13B, T18 |
+| T19 | Planned | Derive and run task-appropriate final verification commands | T18A |
+| T20 | Planned | Add one-attempt PR state and existing-PR reconciliation | T19 |
+| T21 | Planned | Attempt PR creation once and preserve manual handoff on failure | T20 |
+| T22 | Planned | Emit privacy-safe role, execution-profile, token, duration, verdict, and finding telemetry in shadow mode | T13B, T13C |
+| T23 | Planned | Append observations automatically without promoting instincts | T22 |
+| T24 | Planned | Add the token/learning/model-effort evaluation framework and report template | T23 |
+| T25 | Planned | Reuse shared evidence types in Builder-Guardian | T17, T19 |
+| T26 | Planned | Route High Risk tasks to optional immutable evidence mode | T25 |
+| T27 | Planned | Constrain garbage collection to disposable task artifacts | T07 |
+| T28 | Planned | Add migration warnings and legacy-baton compatibility behavior | T21, T26 |
+| T29 | Planned | Document installation, runtime operation, and recovery | T28 |
+| T30 | Planned | Remove stale fallback-era references after a repository-wide audit | T29 |
+| T31 | Planned | Add an automated synthetic cross-harness round-trip test and privacy-safe result | T30, Claude alignment complete |
+| T32 | Planned | Remove final fallback identity and declare standalone behavior active | T12, T21, T23, T24, T27, T30, T31 |
+| T33 | Planned | Publish the first evidence-based token/learning/model-effort evaluation | T24, evaluation sample met |
 
 Each task gets its own:
 
