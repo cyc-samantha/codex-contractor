@@ -97,6 +97,21 @@ available. A non-gating mechanical role may use only an explicitly
 pre-authorized fallback; otherwise it also stops for human direction. Agents
 cannot invent a fallback or enable multi-model routing themselves.
 
+### Multi-role telemetry rollout gate
+
+No multi-role execution or Software Engineer dispatch becomes active until
+every spawn emits a minimal privacy-safe telemetry envelope. The envelope
+records task and PR attribution when known, role, requested and actual model
+and reasoning effort, input, cached-input, and output tokens, duration, and
+review/retry cycle identity. An unavailable provider metric is recorded as
+`null` with an explicit availability reason; it is never omitted or inferred.
+The minimal layer aggregates each task/run and exposes a user-visible known
+token total plus the explicit set of unknown token fields; unknown is never
+treated as zero. When PR identity becomes available after earlier spawns, late
+reconciliation attaches the task/run totals to that PR without rewriting raw
+spawn events. The gate requires actual values or explicit unavailability for
+every required field, so rollout cannot create a blind-cost window.
+
 ### PR-sized task invariant
 
 Every implementation task must be small enough to produce one focused PR.
@@ -201,7 +216,9 @@ reviewers and the verifier remain fresh/read-only as specified.
 Role and gear resolve deterministically to model family, reasoning effort,
 permissions, and fallback behavior. Gating roles fail closed when their
 required execution profile is unavailable. Requested and actual execution
-profiles are captured without enabling multi-model routing.
+profiles are captured without enabling multi-model routing. Multi-role
+execution remains disabled until every spawn satisfies the minimal telemetry
+envelope.
 
 ## 3. Slice 0: Baseline and Compatibility Fixtures
 
@@ -408,21 +425,24 @@ Engineer and fresh reviewer loop without a large role team.
    target, risk, verification, role, execution profile, and permissions.
 3. Enforce the orchestrator protected-write boundary while allowing only
    enumerated coordination, dispatch, PR, and observation artifacts.
-4. Resolve model, reasoning effort, permissions, and fallback behavior from a
+4. Emit the minimal telemetry envelope for every spawn, aggregate task/run
+   known totals and unknown fields, and support late PR-ID reconciliation
+   before enabling multi-role execution.
+5. Resolve model, reasoning effort, permissions, and fallback behavior from a
    deterministic role-and-gear policy.
-5. Keep all roles on one model family until telemetry supports a later change.
-6. Dispatch the Software Engineer into the claimed task worktree.
-7. Dispatch reviewers with read-only permission and fresh context.
-8. Bind review input to actual task, branch, and HEAD.
-9. Bind review evidence and findings to stable engineer and reviewer identity
+6. Keep all roles on one model family until telemetry supports a later change.
+7. Dispatch the Software Engineer into the claimed task worktree.
+8. Dispatch reviewers with read-only permission and fresh context.
+9. Bind review input to actual task, branch, and HEAD.
+10. Bind review evidence and findings to stable engineer and reviewer identity
    and session IDs.
-10. Return findings to the exact `software_engineer_id` and
+11. Return findings to the exact `software_engineer_id` and
     `software_engineer_session_id` in the same worktree.
-11. Route targeted re-review to the exact `raising_reviewer_id` and
+12. Route targeted re-review to the exact `raising_reviewer_id` and
     `raising_reviewer_session_id`.
-12. Invalidate approvals when the reviewed HEAD changes.
-13. Dispatch deterministic verification read-only against the approved HEAD.
-14. Capture requested and actual execution profile, result, and identity in
+13. Invalidate approvals when the reviewed HEAD changes.
+14. Dispatch deterministic verification read-only against the approved HEAD.
+15. Capture requested and actual execution profile, result, and identity in
     trajectory state.
 
 ### Candidate files
@@ -451,6 +471,10 @@ process orchestrator.
 - Orchestrator writes to source, tests, and migrations are blocked.
 - Enumerated coordination artifacts remain writable by the orchestrator.
 - Incomplete or contradictory dispatch contracts fail closed.
+- Multi-role dispatch remains disabled when any spawn cannot emit actual or
+  explicitly unavailable minimal telemetry.
+- Task/run output shows a known token total and every unknown field; late PR
+  reconciliation makes the same totals attributable to the PR.
 - Role and gear produce the documented effort and permission profile.
 - An unavailable gating execution profile fails closed rather than silently
   lowering effort or changing model family.
@@ -461,7 +485,12 @@ process orchestrator.
 - The bound Software Engineer instance fixes findings; a fix invalidates prior
   approval and triggers targeted re-review by the bound raising reviewer
   instance.
+- Engineer, reviewer, and targeted re-review spawns cannot activate until
+  their shared-envelope tests prove actual provider token values or
+  `null` with an explicit reason.
 - Verifier execution is deterministic and cannot modify tracked files.
+- Verifier spawns cannot activate until their shared-envelope tests prove
+  actual provider token values or `null` with an explicit reason.
 
 ## 9. Slice 6: Security Routing and Sign-Off
 
@@ -478,6 +507,8 @@ always active.
 3. Enforce security sign-off before code review.
 4. Detect later changes to sensitive surfaces and invalidate sign-off.
 5. Require recorded human rationale for downgrade.
+6. Require the shared minimal telemetry envelope before activating security
+   reviewer or security re-review spawns.
 
 ### Candidate files
 
@@ -495,6 +526,8 @@ tests/test_security_ordering.py
 - Builder cannot downgrade risk.
 - Code review cannot start before required security approval.
 - Sensitive fixes after code review require renewed security sign-off.
+- Security review and re-review spawns prove actual provider token values or
+  `null` with an explicit reason before the role activates.
 
 ## 10. Slice 7: Verification and PR Handoff
 
@@ -536,22 +569,22 @@ tests/test_pr_handoff.py
 
 ### Objective
 
-Capture the data and establish the evaluation framework without enabling
+Enrich the mandatory minimal spawn envelope with role/effort breakdowns and
+quality analysis, and establish the evaluation framework without enabling
 automatic promotion.
 
 ### Work
 
-1. Define a versioned privacy-safe spawn event.
-2. Record role, gear, policy version, requested and actual model and reasoning
-   effort, and any fallback reason.
-3. Capture token fields exposed by the provider.
-4. Record input, cached-input, output, and injected-learning tokens.
-5. Record duration, verdict, review finding count, and retry count.
-6. Record unavailable metrics as `null` with reason.
-7. Mark estimates with method and provenance.
-8. Append task observations automatically.
-9. Run learning candidate extraction in shadow mode.
-10. Add the versioned evaluation method and report template.
+1. Extend the versioned minimal spawn event without weakening its required
+   fields or null-with-reason behavior.
+2. Add gear, policy version, fallback reason, verdict, review finding count,
+   retry count, and injected-learning tokens.
+3. Break down reconciled PR totals by role and reasoning effort.
+4. Add learning attribution without storing prompt or task content.
+5. Mark estimates with method and provenance.
+6. Append task observations automatically.
+7. Run learning candidate extraction in shadow mode.
+8. Add the versioned evaluation method and report template.
 
 ### Candidate files
 
@@ -659,20 +692,21 @@ PR is human-confirmed merged, T01 remains the next capability task.
 | T12 | Planned | Add human-confirmed claim takeover and trajectory archive | T11 |
 | T13 | Planned | Define versioned role dispatch contracts with stable engineer and reviewer instance identities | T09, T11 |
 | T13A | Planned | Enforce the orchestrator protected-write boundary and coordination-artifact allowlist | T13 |
-| T13B | Planned | Add deterministic base-plus-High-Risk model-effort precedence and fail-closed fallback handling | T13 |
-| T13C | Planned | Dispatch the Software Engineer into the claimed worktree under the approved contract | T13A, T13B |
-| T14 | Planned | Add fresh read-only code review bound to task and HEAD | T13C |
-| T15 | Planned | Return findings to the bound engineer instance and targeted re-review to the bound raising reviewer instance | T14 |
+| T13B | Planned | Emit the shared minimal envelope, aggregate task/run known totals plus unknown fields, and reconcile late PR identity | T13 |
+| T13C | Planned | Add deterministic base-plus-High-Risk model-effort precedence and fail-closed fallback handling | T13, T13B |
+| T13D | Planned | Dispatch the Software Engineer only after its shared envelope proves actual provider tokens or null-with-reason | T13A, T13B, T13C |
+| T14 | Planned | Add fresh read-only code review bound to task and HEAD with required shared-envelope coverage | T13D, T13B |
+| T15 | Planned | Return findings to the bound engineer and targeted re-review to the bound raising reviewer, with shared-envelope coverage for each spawn | T14, T13B |
 | T16 | Planned | Add automatic High Risk triggers and human-authorized downgrade enforcement | T04 |
-| T17 | Planned | Add security-first review, sign-off, and invalidation | T15, T16 |
+| T17 | Planned | Add security-first review, re-review, sign-off, invalidation, and required shared-envelope coverage | T13B, T15, T16 |
 | T18 | Planned | Write verification evidence bound to reviewed HEAD | T15 |
-| T18A | Planned | Dispatch the deterministic verifier read-only against the approved verification contract | T13B, T18 |
+| T18A | Planned | Dispatch the deterministic verifier read-only only after its shared envelope proves actual provider tokens or null-with-reason | T13B, T13C, T18 |
 | T19 | Planned | Derive and run task-appropriate final verification commands | T18A |
 | T20 | Planned | Add one-attempt PR state and existing-PR reconciliation | T19 |
 | T21 | Planned | Attempt PR creation once and preserve manual handoff on failure | T20 |
-| T22 | Planned | Emit privacy-safe role, execution-profile, token, duration, verdict, and finding telemetry in shadow mode | T13B, T13C |
+| T22 | Planned | Enrich reconciled telemetry with verdict, findings, retries, learning attribution, and quality breakdowns by role/effort | T13B, T13D |
 | T23 | Planned | Append observations automatically without promoting instincts | T22 |
-| T24 | Planned | Add the token/learning/model-effort evaluation framework and report template | T23 |
+| T24 | Planned | Add the token/learning/model-effort evaluation framework and report template over enriched PR aggregates | T22, T23 |
 | T25 | Planned | Reuse shared evidence types in Builder-Guardian | T17, T19 |
 | T26 | Planned | Route High Risk tasks to optional immutable evidence mode | T25 |
 | T27 | Planned | Constrain garbage collection to disposable task artifacts | T07 |
