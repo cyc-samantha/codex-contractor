@@ -19,6 +19,14 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# The authorized escape hatch must not depend on the gate implementation it
+# exists to bypass. This also keeps migration-era missing helpers fail-closed
+# unless a human explicitly sets the documented per-run override.
+if [[ "${CLAUDE_DISABLE_QUALITY_GATE:-0}" == "1" ]]; then
+  echo "[quality-gate] CLAUDE_DISABLE_QUALITY_GATE=1 — gate skipped."
+  exit 0
+fi
+
 # Resolve worktree path — must be the worktree, not a foreign cwd.
 # Allow override via $WORKTREE env var for testing.
 _cqg_resolve_worktree() {
