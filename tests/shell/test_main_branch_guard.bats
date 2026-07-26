@@ -23,6 +23,88 @@ setup() { GUARD="${HOOKS_DIR}/main-branch-guard.sh"; }
   [ "$status" -eq 0 ]
 }
 
+@test "blocks bare 'gh pr create' at repo root" {
+  make_repo
+  run bash -c "cd '$REPO_DIR' && printf '%s' '$(payload_bash "gh pr create --fill")' | '$GUARD'"
+  [ "$status" -eq 2 ]
+  [[ "$output" == *"literal absolute registered-worktree path"* ]]
+  [[ "$output" != *'$WT'* ]]
+}
+
+@test "allows 'gh pr create' delegated to a registered worktree" {
+  make_repo_with_worktree
+  run bash -c "cd '$REPO_DIR' && printf '%s' '$(payload_bash "cd $WORKTREE_DIR && gh pr create --fill")' | '$GUARD'"
+  [ "$status" -eq 0 ]
+}
+
+@test "blocks 'gh pr create' delegated to an unregistered directory" {
+  make_repo
+  local unregistered; unregistered="$(cxh_mktemp_dir)"
+  run bash -c "cd '$REPO_DIR' && printf '%s' '$(payload_bash "cd $unregistered && gh pr create --fill")' | '$GUARD'"
+  rm -rf "$unregistered"
+  [ "$status" -eq 2 ]
+}
+
+@test "blocks 'gh pr create' delegated through HOME" {
+  make_repo_with_worktree
+  run bash -c "cd '$REPO_DIR' && printf '%s' '$(payload_bash 'cd $HOME && gh pr create --fill')' | '$GUARD'"
+  [ "$status" -eq 2 ]
+}
+
+@test "blocks 'gh pr create' delegated through an unset variable" {
+  make_repo_with_worktree
+  run bash -c "cd '$REPO_DIR' && printf '%s' '$(payload_bash 'cd $UNSET_WORKTREE && gh pr create --fill')' | '$GUARD'"
+  [ "$status" -eq 2 ]
+}
+
+@test "blocks assignment-controlled worktree delegation" {
+  make_repo_with_worktree
+  run bash -c "cd '$REPO_DIR' && printf '%s' '$(payload_bash "TARGET=$WORKTREE_DIR; cd \\$TARGET && gh pr create --fill")' | '$GUARD'"
+  [ "$status" -eq 2 ]
+}
+
+@test "blocks registered-worktree delegation followed by repo-root escape" {
+  make_repo_with_worktree
+  run bash -c "cd '$REPO_DIR' && printf '%s' '$(payload_bash "cd $WORKTREE_DIR && cd $REPO_DIR && gh pr create --fill")' | '$GUARD'"
+  [ "$status" -eq 2 ]
+}
+
+@test "blocks parenthesized repo-root escape after worktree delegation" {
+  make_repo_with_worktree
+  run bash -c "cd '$REPO_DIR' && printf '%s' '$(payload_bash "cd $WORKTREE_DIR && (cd $REPO_DIR && gh pr create --fill)")' | '$GUARD'"
+  [ "$status" -eq 2 ]
+}
+
+@test "blocks newline-separated repo-root escape after worktree delegation" {
+  make_repo_with_worktree
+  local command payload
+  command="cd $WORKTREE_DIR && git status"$'\n'"cd $REPO_DIR"$'\n'"gh pr create --fill"
+  payload="$(payload_bash "$command")"
+  run bash -c "cd '$REPO_DIR' && printf '%s' '$payload' | '$GUARD'"
+  [ "$status" -eq 2 ]
+}
+
+@test "blocks carriage-return repo-root escape after worktree delegation" {
+  make_repo_with_worktree
+  local command payload
+  command="cd $WORKTREE_DIR && git status"$'\r'"cd $REPO_DIR"$'\r'"gh pr create --fill"
+  payload="$(payload_bash "$command")"
+  run bash -c "cd '$REPO_DIR' && printf '%s' '$payload' | '$GUARD'"
+  [ "$status" -eq 2 ]
+}
+
+@test "blocks nested git -C repo-root escape after worktree delegation" {
+  make_repo_with_worktree
+  run bash -c "cd '$REPO_DIR' && printf '%s' '$(payload_bash "cd $WORKTREE_DIR && git -C $REPO_DIR checkout main")' | '$GUARD'"
+  [ "$status" -eq 2 ]
+}
+
+@test "blocks nested git-dir repo-root escape after worktree delegation" {
+  make_repo_with_worktree
+  run bash -c "cd '$REPO_DIR' && printf '%s' '$(payload_bash "cd $WORKTREE_DIR && git --git-dir=$REPO_DIR/.git checkout main")' | '$GUARD'"
+  [ "$status" -eq 2 ]
+}
+
 @test "ignores non-Bash tool payloads" {
   run bash -c "printf '%s' '$(payload_write /tmp/x.py)' | '$GUARD'"
   [ "$status" -eq 0 ]
