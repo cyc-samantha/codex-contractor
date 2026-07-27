@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com).
 
 ### Added
 
+- Add canonical-first, read-only pipeline state discovery with supported legacy flat-path compatibility
 - Add fail-closed Small Change compact specifications and approval gating
 - Add deterministic standalone intake routing for Discuss, Small Change, Build, and human-elevated High Risk workflows
 - Add a commit-bound Builder/Guardian delivery gate with automatic Guardian dispatch, independently sourced patch review, isolated review, independent verification, and fail-closed handoff validation
