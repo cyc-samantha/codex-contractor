@@ -681,33 +681,52 @@ without editing the repository.
 
 The implementation must:
 
-- use a fresh context that cannot inherit the Software Engineer conversation;
-- run read-only with one call and no automatic retry;
+- use a fresh context with a versioned dispatch contract and a non-engineer
+  role, role identity, session ID, run ID, and telemetry event ID that cannot
+  match the Software Engineer identity or session;
+- run tool-free, network-free, and without repository or user-secret
+  filesystem access; provide only the bounded diff and survivor payload, mark
+  both as untrusted inert data, and prohibit following instructions found in
+  source text, comments, filenames, or survivor descriptions;
+- run read-only with one call, no automatic retry, and versioned fail-closed
+  caps: at most 200 KiB of canonical diff input, 100 survivor records, 8,000
+  output tokens, 64 KiB of accepted output, and 120 seconds wall time;
+- independently reconstruct the canonical diff from the bound repository
+  identity, base HEAD, and reviewed target HEAD before dispatch; record and
+  verify its digest instead of trusting a caller-supplied diff;
 - bind every mutant to the task, reviewed Git HEAD, file, line range, original
-  text, mutated text, category, rationale, and equivalence verdict;
+  text, mutated text, category, rationale, equivalence verdict, producer role,
+  producer identity and session, dispatch run, and telemetry event;
 - reject malformed output, mismatched source text, paths outside the reviewed
-  diff, and unsupported mutation categories;
+  diff, unsupported mutation categories, oversized fields, control characters,
+  instruction-like output outside the schema, and any identity, repository,
+  base/target HEAD, digest, dispatch, or telemetry mismatch;
 - preserve the existing `SKIP` result when the execution profile is
   unavailable or the single call returns no valid non-equivalent mutants;
 - emit the shared minimal spawn telemetry envelope, including requested and
   actual model and reasoning effort, tokens or null-with-reason, duration, and
   retry-cycle identity;
 - keep activation disabled until T13B and T13C have merged and the adapter's
-  telemetry contract tests pass.
+  telemetry contract tests pass; activation additionally requires a runtime
+  canary proving that the correlated telemetry event was durably persisted
+  before the adapter result can be accepted.
 
 Acceptance criteria:
 
 1. No verification instruction requires a Claude runtime.
 2. The write-capable Software Engineer cannot supply or approve Tier 3.5
-   mutants.
+   mutants; producer, dispatch, session, run, and telemetry identities prove a
+   distinct non-engineer execution.
 3. One invocation produces no more than ten schema-valid mutants and never
-   retries automatically.
+   retries automatically; every input, output, token, and duration cap has a
+   passing boundary test.
 4. Missing telemetry, contradictory identity or HEAD fields, repository
-   writes, and malformed mutant output fail closed.
+   writes, tool or network access, prompt-injection attempts, stale or
+   substituted diffs, and malformed mutant output fail closed.
 5. Unavailable execution records `SKIP` with an explicit reason rather than
    fabricating mutants or token values.
 6. Activation remains mechanically disabled before the T13B/T13C rollout
-   prerequisites are satisfied.
+   prerequisites and the correlated runtime telemetry canary are satisfied.
 
 Candidate files:
 
