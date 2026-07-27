@@ -2,8 +2,11 @@
 # Approval token gate for /pr-creation. Exits 0 to proceed, 2 to block.
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+HARNESS_ROOT="${HARNESS_ROOT:-${CLAUDE_PLUGIN_ROOT:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}}}"
 # shellcheck source=/dev/null
-source "$SCRIPT_DIR/../../../hooks/_lib/approval-token.sh"
+source "${HARNESS_ROOT}/hooks/_lib/approval-token.sh" || {
+  echo "PR_BLOCKED: cannot load approval-token helper." >&2; exit 2;
+}
 
 BRANCH="$(git branch --show-current 2>/dev/null || echo "")"
 TASK_ID="$(_at_resolve_task_id "$BRANCH")"

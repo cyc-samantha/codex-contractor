@@ -796,6 +796,15 @@ Each task gets its own:
 - fresh verification;
 - PR attempt and retained evidence.
 
+### Emergency delivery bootstrap
+
+The current PR-delivery blocker requires a minimal canonical task bootstrap in
+the same PR as the gate repair: before implementation starts, intake must
+create a new task directory atomically, write the version-1 `pipeline.md`, and
+propagate `CLAUDE_PIPELINE_TASK_ID` to verification and PR commands. Existing
+task state is never overwritten; a collision fails closed pending the planned
+human-confirmed resume flow.
+
 Tasks may proceed in parallel only when their plans identify non-overlapping
 files and contracts. A task that changes a shared schema, central skill, or
 common fixture blocks dependent tasks until its PR is human-confirmed merged.
