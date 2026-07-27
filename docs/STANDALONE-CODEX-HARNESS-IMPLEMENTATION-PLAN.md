@@ -58,9 +58,22 @@ contradictory required fields fail closed.
 
 ### Target model and reasoning-effort policy
 
-Use one model family initially. Multi-model routing remains disabled until
-spawn telemetry provides evidence that its quality or cost benefit justifies
-the added variable.
+Emergency model-balance policy routes model and effort deterministically by
+work type. This intentional allocation reduces routine task token consumption
+while reserving the higher-capability model for complex engineering and system
+design. Roles not named below retain their existing documented effort until a
+later, versioned policy explicitly changes them.
+
+This replaces the initial single-model-family rollout assumption. The
+telemetry gate remains required before introducing any additional model route
+or changing this allocation.
+
+| Work type or role group | Model and reasoning effort |
+|---|---|
+| Simple wording, configuration, and small bug fixes | `gpt-5.6-Luna` |
+| General feature development and test authoring | `gpt-5.6-terra` |
+| Complex debugging, multi-file refactoring, Code Reviewer, Security Reviewer, and Orchestrator | `gpt-5.6-sol` with `medium` reasoning |
+| System design and Architect (brainstorm, specification, and planning) | `gpt-5.6-sol` with `high` reasoning |
 
 Reasoning effort is selected deterministically from role and gear, not chosen
 ad hoc by the spawned agent:
@@ -71,23 +84,17 @@ ad hoc by the spawned agent:
 | Brainstorm, specification, and planning | `high` |
 | Small Change Software Engineer | `medium` |
 | Build Software Engineer | `high` |
-| Code Reviewer | `high` |
-| Security Reviewer | `high` |
+| Code Reviewer | `medium` |
+| Security Reviewer | `medium` |
 | Deterministic Verifier | `low` |
 | PR and observation artifact generation | `low` |
 
-High Risk applies these overrides:
+High Risk retains its review and verification gates, but does not override the
+work-type model-and-effort allocation above.
 
-| High Risk role | Required reasoning effort |
-|---|---|
-| Software Engineer | `xhigh` |
-| Code Reviewer | `xhigh` |
-| Security Reviewer | `xhigh` |
-| Deterministic Verifier | `low` |
-
-Resolution precedence is exact: select the base role-and-gear value, then
-apply a matching High Risk override. The High Risk override wins. No agent or
-fallback may silently lower the resolved effort.
+Resolution precedence is exact: select the matching work-type allocation.
+High Risk does not alter that allocation. No agent or fallback may silently
+lower the resolved effort.
 
 Model or effort unavailability follows a versioned deterministic fallback
 table. Every fallback records requested and actual model and effort, reason,
@@ -430,7 +437,8 @@ Engineer and fresh reviewer loop without a large role team.
    before enabling multi-role execution.
 5. Resolve model, reasoning effort, permissions, and fallback behavior from a
    deterministic role-and-gear policy.
-6. Keep all roles on one model family until telemetry supports a later change.
+6. Use the documented work-type model allocation; do not introduce further
+   model routes until telemetry supports a later change.
 7. Dispatch the Software Engineer into the claimed task worktree.
 8. Dispatch reviewers with read-only permission and fresh context.
 9. Bind review input to actual task, branch, and HEAD.
@@ -743,6 +751,18 @@ This plan-only governance change does not implement a runtime capability and
 does not consume a capability task ID. T00 is complete. After this governance
 PR is human-confirmed merged, T01 remains the next capability task.
 
+### Logged delivery blocker: PR quality-gate helper resolution
+
+The current `harness-pr-creation` gate wrappers resolve shared helpers beneath
+the nonexistent repository-local `.agents/hooks/_lib/` path, rather than the
+Claude-side `$HARNESS_ROOT/hooks/_lib/` install. The resulting missing helper
+functions make the quality-gate wrapper fail closed before a PR can be created.
+
+The next independent PR must correct the helper-resolution contract and add
+regression coverage that executes the wrappers from their shipped
+`.agents/skills/harness-pr-creation/lib/` location. It must not bypass the
+quality gate or weaken its fail-closed behavior.
+
 | Task | Status | One-PR outcome | Depends on |
 |---|---|---|---|
 | T00 | Complete | Add synthetic state fixtures and pin the existing test baseline | none |
@@ -761,7 +781,7 @@ PR is human-confirmed merged, T01 remains the next capability task.
 | T13 | Planned | Define versioned role dispatch contracts with stable engineer and reviewer instance identities | T09, T11 |
 | T13A | Planned | Enforce the orchestrator protected-write boundary and coordination-artifact allowlist | T13 |
 | T13B | Planned | Emit the shared minimal envelope, aggregate task/run known totals plus unknown fields, and reconcile late PR identity | T13 |
-| T13C | Planned | Add deterministic base-plus-High-Risk model-effort precedence and fail-closed fallback handling | T13, T13B |
+| T13C | Planned | Add deterministic work-type model-effort allocation and fail-closed fallback handling | T13, T13B |
 | T13D | Planned | Dispatch the Software Engineer only after its shared envelope proves actual provider tokens or null-with-reason | T13A, T13B, T13C |
 | T14 | Planned | Add fresh read-only code review bound to task and HEAD with required shared-envelope coverage | T13D, T13B |
 | T15 | Planned | Return findings to the bound engineer and targeted re-review to the bound raising reviewer, with shared-envelope coverage for each spawn | T14, T13B |

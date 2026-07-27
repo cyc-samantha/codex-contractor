@@ -14,7 +14,7 @@ immutable Git target and may inspect it, but must not edit files, commit, push,
 or mutate task state.
 
 Use `collaboration.spawn_agent` from the Builder session. Default to
-`gpt-5.6-terra` with `medium` reasoning when that is a different model from the
+`gpt-5.6-sol` with `medium` reasoning when that is a different model from the
 Builder. The reviewer must use a different model from the Builder. Otherwise select another available model. If no different model is
 available, fail closed. Do not launch an additional `codex exec review` subprocess for this gate.
 
@@ -66,9 +66,9 @@ Call `collaboration.spawn_agent` with:
 
 - `fork_turns: "none"` so the reviewer receives no Builder conversation
   context;
-- `model: "gpt-5.6-terra"` and `reasoning_effort: "medium"` when Terra is
+- `model: "gpt-5.6-sol"` and `reasoning_effort: "medium"` when Sol is
   different from the Builder;
-- another available model when the Builder uses Terra;
+- another available model when the Builder uses Sol;
 - a task message that binds `REVIEW_TARGET`, names the repository and
   acceptance criteria, requires read-only behavior, and requests severity,
   file, and line for every finding.
