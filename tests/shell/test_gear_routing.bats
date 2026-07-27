@@ -12,6 +12,7 @@ setup() {
   cases=(
     "question false false false false|Discuss"
     "documentation true false false false|Small Change"
+    "localized-edit true false false false|Small Change"
     "configuration false false false false|Build"
     "bug true false false false|Build"
     "feature true false false false|Build"
@@ -68,6 +69,8 @@ setup() {
     "documentation false false false"
     "documentation true true false"
     "documentation true false true"
+    "localized-edit false false false"
+    "localized-edit true true false"
     "question true true false"
     "question true false true"
     "unknown true false false"

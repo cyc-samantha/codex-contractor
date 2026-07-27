@@ -12,7 +12,7 @@ dependency_change="$3"
 architecture_change="$4"
 human_elevated="$5"
 
-if [[ ! "$kind" =~ ^(question|research|brainstorm|architecture-discussion|documentation|configuration|bug|feature|refactor|unknown)$ ]]; then
+if [[ ! "$kind" =~ ^(question|research|brainstorm|architecture-discussion|documentation|configuration|localized-edit|bug|feature|refactor|unknown)$ ]]; then
   echo "route: invalid kind" >&2
   exit 2
 fi
@@ -30,7 +30,7 @@ elif [[ "$dependency_change" == "true" || "$architecture_change" == "true" ]]; t
   echo "Build"
 elif [[ "$kind" =~ ^(question|research|brainstorm|architecture-discussion)$ ]]; then
   echo "Discuss"
-elif [[ "$kind" =~ ^(documentation|configuration)$ ]] \
+elif [[ "$kind" =~ ^(documentation|configuration|localized-edit)$ ]] \
   && [[ "$scope_clear" == "true" ]] \
   && [[ "$dependency_change" == "false" ]] \
   && [[ "$architecture_change" == "false" ]]; then
