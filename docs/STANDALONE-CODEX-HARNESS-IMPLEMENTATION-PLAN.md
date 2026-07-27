@@ -671,6 +671,74 @@ Finish migration without deleting historical runtime state.
 The slices above are capability groups, not implementation task boundaries.
 Implement them through the following focused PRs.
 
+### T18B task card: native Codex LLM-mutant adapter
+
+Replace the verification workflow's Claude-specific Tier 3.5 call with one
+fresh, read-only Codex execution. The adapter accepts the immutable reviewed
+HEAD diff, the latest rule-based mutation survivor list, and the five approved
+semantic mutation categories. It returns at most ten schema-validated mutants
+without editing the repository.
+
+The implementation must:
+
+- use a fresh context with a versioned dispatch contract and a non-engineer
+  role, role identity, session ID, run ID, and telemetry event ID that cannot
+  match the Software Engineer identity or session;
+- run tool-free, network-free, and without repository or user-secret
+  filesystem access; provide only the bounded diff and survivor payload, mark
+  both as untrusted inert data, and prohibit following instructions found in
+  source text, comments, filenames, or survivor descriptions;
+- run read-only with one call, no automatic retry, and versioned fail-closed
+  caps: at most 200 KiB of canonical diff input, 100 survivor records, 4 KiB
+  per survivor record, 64 KiB for the complete survivor payload, 8,000 output
+  tokens, 64 KiB of accepted output, and 120 seconds wall time;
+- independently reconstruct the canonical diff from the bound repository
+  identity, base HEAD, and reviewed target HEAD before dispatch; record and
+  verify its digest instead of trusting a caller-supplied diff;
+- bind every mutant to the task, reviewed Git HEAD, file, line range, original
+  text, mutated text, category, rationale, equivalence verdict, producer role,
+  producer identity and session, dispatch run, and telemetry event;
+- reject malformed output, mismatched source text, paths outside the reviewed
+  diff, unsupported mutation categories, oversized fields, control characters,
+  instruction-like output outside the schema, and any identity, repository,
+  base/target HEAD, digest, dispatch, or telemetry mismatch;
+- preserve the existing `SKIP` result when the execution profile is
+  unavailable or the single call returns no valid non-equivalent mutants;
+- emit the shared minimal spawn telemetry envelope, including requested and
+  actual model and reasoning effort, tokens or null-with-reason, duration, and
+  retry-cycle identity;
+- keep activation disabled until T13B and T13C have merged and the adapter's
+  telemetry contract tests pass; activation additionally requires a runtime
+  canary proving that the correlated telemetry event was durably persisted
+  before the adapter result can be accepted.
+
+Acceptance criteria:
+
+1. No verification instruction requires a Claude runtime.
+2. The write-capable Software Engineer cannot supply or approve Tier 3.5
+   mutants; producer, dispatch, session, run, and telemetry identities prove a
+   distinct non-engineer execution.
+3. One invocation produces no more than ten schema-valid mutants and never
+   retries automatically; every input, output, token, and duration cap has a
+   passing boundary test.
+4. Missing telemetry, contradictory identity or HEAD fields, repository
+   writes, tool or network access, prompt-injection attempts, stale or
+   substituted diffs, and malformed mutant output fail closed.
+5. Unavailable execution records `SKIP` with an explicit reason rather than
+   fabricating mutants or token values.
+6. Activation remains mechanically disabled before the T13B/T13C rollout
+   prerequisites and the correlated runtime telemetry canary are satisfied.
+
+Candidate files:
+
+```text
+.agents/skills/harness-verify/SKILL.md
+scripts/lib/llm_mutant_adapter.py
+scripts/lib/spawn_telemetry.py
+tests/test_llm_mutant_adapter.py
+tests/test_spawn_telemetry.py
+```
+
 This plan-only governance change does not implement a runtime capability and
 does not consume a capability task ID. T00 is complete. After this governance
 PR is human-confirmed merged, T01 remains the next capability task.
@@ -701,6 +769,7 @@ PR is human-confirmed merged, T01 remains the next capability task.
 | T17 | Planned | Add security-first review, re-review, sign-off, invalidation, and required shared-envelope coverage | T13B, T15, T16 |
 | T18 | Planned | Write verification evidence bound to reviewed HEAD | T15 |
 | T18A | Planned | Dispatch the deterministic verifier read-only only after its shared envelope proves actual provider tokens or null-with-reason | T13B, T13C, T18 |
+| T18B | Planned | Replace the Claude-specific Tier 3.5 call with a fresh read-only Codex LLM-mutant adapter, activated only after telemetry gates pass | T13B, T13C, T18 |
 | T19 | Planned | Derive and run task-appropriate final verification commands | T18A |
 | T20 | Planned | Add one-attempt PR state and existing-PR reconciliation | T19 |
 | T21 | Planned | Attempt PR creation once and preserve manual handoff on failure | T20 |
