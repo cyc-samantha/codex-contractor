@@ -20,8 +20,13 @@ Apply these workflow rules now:
   gear router lands.
 - Keep every implementation task small enough for one focused,
   independently verifiable PR.
-- Use a fresh read-only reviewer for formal review. Builder self-review does
-  not satisfy the review gate.
+- Use a fresh read-only collaboration reviewer Agent for formal review.
+  Builder self-review does not satisfy the review gate. The reviewer must use
+  a different model from the Builder; default to
+  `gpt-5.6-terra` with medium reasoning when that differs from the Builder,
+  otherwise select another available model. If no distinct reviewer model is
+  available, fail closed. Do not launch an additional `codex exec review`
+  subprocess for this gate.
 - For security-relevant work, obtain fresh security sign-off before code
   review. Re-run security review when later fixes touch a sensitive surface.
 - Return findings to the original engineer, then run targeted re-review with
