@@ -1,19 +1,22 @@
 ---
 name: "code-review"
-description: "Inline self-review pass over your own diff before handing work back: SOLID/DRY, cohesion, test quality, complexity, naming. Run this on yourself — there is no separate reviewer to spawn."
+description: "Run formal review through a fresh read-only collaboration reviewer Agent using a model distinct from the Builder."
 context: fork
 ---
 
-# Code Review (inline self-review)
+# Fresh Code Review
 
 ## What This Skill Does
 
-A single-thread contractor has no separate code-reviewer role to spawn —
-this skill is the checklist you run against your OWN diff, in the same
-session that wrote it, before you consider the work done or hand it back
-via `HANDOFF.md`. Read the diff as if you were seeing it for the first
-time: the value of a review pass is fresh eyes on judgment calls, not a
-second agent.
+Formal review runs in a fresh read-only collaboration reviewer Agent.
+Builder self-review does not satisfy the formal review gate. The reviewer receives an
+immutable Git target and may inspect it, but must not edit files, commit, push,
+or mutate task state.
+
+Use `collaboration.spawn_agent` from the Builder session. Default to
+`gpt-5.6-terra` with `medium` reasoning when that is a different model from the
+Builder. The reviewer must use a different model from the Builder. Otherwise select another available model. If no different model is
+available, fail closed. Do not launch an additional `codex exec review` subprocess for this gate.
 
 ## Current Context
 
@@ -42,36 +45,54 @@ finding.
 - After the build/fix work is functionally complete (tests green, shape
   constraints met), before writing `Done (verified)` into a `HANDOFF.md`
   or otherwise declaring the work finished.
-- Run alongside `$harness-security-review` — both are read-only passes
-  over the same diff; running one right after the other in the same
-  session is fine, there is no parallelism to coordinate.
+- After every engineer fix that changes the reviewed Git target.
+- Security review still runs first when the task touches a sensitive surface.
 
 ## Process
 
-### 1. Gather Context
+### 1. Bind the Review Target
 
 ```bash
-git diff main...HEAD --stat
-git log main...HEAD --oneline
+REVIEW_TARGET="$(git rev-parse HEAD)"
+test -z "$(git status --porcelain)"
+git diff origin/main..."$REVIEW_TARGET" --stat
 ```
 
-### 2. Review Against the Checklist
+The worktree must be clean. A dirty or moving target fails closed.
 
-Walk the diff hunk by hunk against the Review Checklist below. For each
-finding, assign a severity (Severity Grading) and note whether it was
-preventable at write-time (Preventability Classification) — that record
-feeds a later `/harness:learn` pass on the Claude side (this repo does
-not carry its own `learn` port — see `pipeline-state/HANDOFF-CONTRACT.md`
-§ Observation tagging).
+### 2. Spawn the Reviewer
 
-### 3. Act on Findings
+Call `collaboration.spawn_agent` with:
 
-- **No CRITICAL/HIGH/MEDIUM findings**: the diff is APPROVE — proceed to
-  the next step (verify/ship/handoff).
-- **Any CRITICAL/HIGH/MEDIUM findings**: fix them yourself, in this same
-  session, before proceeding. Re-run the checklist against the updated
-  diff. There is no "spawn someone else to fix it" step — you are the
-  only engineer on shift.
+- `fork_turns: "none"` so the reviewer receives no Builder conversation
+  context;
+- `model: "gpt-5.6-terra"` and `reasoning_effort: "medium"` when Terra is
+  different from the Builder;
+- another available model when the Builder uses Terra;
+- a task message that binds `REVIEW_TARGET`, names the repository and
+  acceptance criteria, requires read-only behavior, and requests severity,
+  file, and line for every finding.
+
+Do not spawn until a distinct model is resolved. Do not treat a different
+reasoning effort on the same model as model separation.
+
+### 3. Enforce Read-Only Return
+
+After the reviewer returns, confirm `HEAD` still equals `REVIEW_TARGET` and the
+worktree is still clean. Any mutation or unevaluable state invalidates the
+review and fails closed.
+
+```bash
+test "$(git rev-parse HEAD)" = "$REVIEW_TARGET"
+test -z "$(git status --porcelain)"
+```
+
+### 4. Act on Findings
+
+- **APPROVE with no CRITICAL/HIGH/MEDIUM findings**: proceed to fresh
+  verification bound to `REVIEW_TARGET`.
+- **Any CRITICAL/HIGH/MEDIUM findings**: Return findings to the original engineer.
+  After the engineer commits the fix, run targeted re-review with the raising reviewer against the new immutable target.
 
 ## Review Checklist
 
@@ -101,10 +122,9 @@ the finding severity is "process" (fix the hook, not just the code).
 CHANGES_REQUESTED (fix-it-yourself) if any exist. LOW and INFO are noted
 but do not block.
 
-**In-cycle enforcement:** CHANGES_REQUESTED findings are fixed in this
-same session, never deferred to a follow-up ticket or shipped
-known-broken. If a finding is genuinely orthogonal (different module,
-different contract, different user journey), mark it INFO, not MEDIUM.
+**In-cycle enforcement:** CHANGES_REQUESTED findings return to the original
+engineer and are fixed in the same task, never deferred or shipped
+known-broken. The raising reviewer performs targeted re-review.
 
 ## Preventability Classification (Backward Feedback)
 
@@ -125,8 +145,10 @@ findings earlier next time.
 ```
 Verdict: APPROVE / CHANGES_REQUESTED
 Next: If APPROVE → proceed (verify/ship/handoff)
-      If CHANGES_REQUESTED → fix in this session, re-run this checklist
+      If CHANGES_REQUESTED → original engineer fixes, raising reviewer re-reviews
 Findings: [list of specific findings with severity and preventability]
+Review target: [immutable Git SHA]
+Reviewer model: [must differ from Builder model]
 ```
 
 ### Context for Next Step
