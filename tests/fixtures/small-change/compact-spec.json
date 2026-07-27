@@ -1,0 +1,20 @@
+{
+  "intended_behavior": "Update the installation wording.",
+  "allowed_scope": [
+    "Documentation wording only"
+  ],
+  "prohibited_changes": [
+    "Runtime behavior",
+    "Dependencies"
+  ],
+  "expected_files": [
+    "README.md"
+  ],
+  "verification": [
+    "bats tests/shell/test_small_change_spec.bats"
+  ],
+  "tdd_exception": {
+    "type": "docs_only",
+    "rationale": "The change affects prose only and has no executable behavior."
+  }
+}

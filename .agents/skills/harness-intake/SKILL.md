@@ -61,7 +61,43 @@ For Discuss, set `implementation_state: none` and do not create a worktree, task
 
 For Build and High Risk, record a plan before implementation.
 A medium or large plan requires explicit human approval; do not enter Build until that approval is recorded.
-Small Change specification and approval behavior are
-defined by T04. Automatic High Risk triggers and downgrade enforcement are
-defined by T16; until T16 merges, only explicit human elevation selects High
-Risk through this skill.
+
+## Small Change compact specification
+
+Before implementing a Small Change, write a JSON compact specification with:
+
+```json
+{
+  "intended_behavior": "<observable outcome>",
+  "allowed_scope": ["<permitted change>"],
+  "prohibited_changes": ["<explicit boundary>"],
+  "expected_files": ["<repository-relative path>"],
+  "verification": ["<command or check>"],
+  "tdd_exception": {
+    "type": "none | docs_only",
+    "rationale": null
+  }
+}
+```
+
+Use `type: none` with a null rationale when executable behavior requires TDD.
+Use `type: docs_only` with a non-empty rationale only when the change affects
+prose and has no executable behavior.
+
+Run the Small Change gate before implementation and whenever touched files or
+scope change:
+
+```bash
+.agents/skills/harness-intake/scripts/small-change-gate.sh \
+  <spec.json> <already-requested> <ambiguous> <dependencies> \
+  <architecture-change> <scope-expansion> [touched-file ...]
+```
+
+`PROCEED` means the conversation plan has clear scope and boundaries and the
+human already requested implementation, so no second approval is required.
+`CONFIRM` means implementation must pause for human confirmation. Missing or
+malformed contract data fails closed.
+
+Automatic High Risk triggers and downgrade enforcement are defined by T16;
+until T16 merges, only explicit human elevation selects High Risk through this
+skill.
