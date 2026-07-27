@@ -37,8 +37,16 @@ class TaskBootstrapTest(unittest.TestCase):
             create_task_state("task-one", self.repository, "fix/task-one", self.worktree, self.harness_data)
 
     def test_rejects_unsafe_task_id(self) -> None:
+        for task_id in ("../escape", "$(command)", "task id", "task\nid"):
+            with self.subTest(task_id=task_id), self.assertRaises(TaskBootstrapError):
+                create_task_state(task_id, self.repository, "fix/task-one", self.worktree, self.harness_data)
+
+    def test_refuses_to_shadow_supported_legacy_state(self) -> None:
+        legacy = self.harness_data / "pipeline-state/task-one-pipeline.md"
+        legacy.parent.mkdir(parents=True)
+        legacy.write_text("task_id: task-one\n")
         with self.assertRaises(TaskBootstrapError):
-            create_task_state("../escape", self.repository, "fix/task-one", self.worktree, self.harness_data)
+            create_task_state("task-one", self.repository, "fix/task-one", self.worktree, self.harness_data)
 
     def test_cli_returns_task_id_export_for_following_pipeline_steps(self) -> None:
         command = [

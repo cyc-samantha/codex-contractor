@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 
@@ -11,7 +12,7 @@ class PipelineStatePathError(ValueError):
 
 
 def validate_task_id(task_id: str) -> None:
-    if not task_id or task_id in {".", ".."} or Path(task_id).name != task_id:
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_-]*", task_id):
         raise PipelineStatePathError(f"unsafe pipeline task id: {task_id!r}")
 
 

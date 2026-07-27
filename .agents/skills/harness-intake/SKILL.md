@@ -67,8 +67,13 @@ bootstrap command from the repository worktree and retain its exported value
 for every later pipeline command:
 
 ```bash
-eval "$(python3 scripts/lib/task_bootstrap.py \
-  <task-id> <repository-root> <branch> <registered-worktree> <harness-data>)"
+unset CLAUDE_PIPELINE_TASK_ID
+bootstrap_export="$(python3 scripts/lib/task_bootstrap.py \
+  <task-id> <repository-root> <branch> <registered-worktree> <harness-data>)" \
+  || { echo "task bootstrap failed" >&2; exit 2; }
+eval "$bootstrap_export"
+test -n "${CLAUDE_PIPELINE_TASK_ID:-}" \
+  || { echo "task bootstrap emitted no task ID" >&2; exit 2; }
 ```
 
 The command creates `${HARNESS_DATA}/pipeline-state/<task-id>/pipeline.md` and

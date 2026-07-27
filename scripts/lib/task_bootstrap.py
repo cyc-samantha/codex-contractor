@@ -5,8 +5,9 @@ from __future__ import annotations
 import argparse
 from datetime import UTC, datetime
 from pathlib import Path
+import shlex
 
-from pipeline_state_paths import PipelineStatePathError, canonical_pipeline_path
+from pipeline_state_paths import PipelineStatePathError, canonical_pipeline_path, legacy_pipeline_path
 
 
 class TaskBootstrapError(ValueError):
@@ -20,6 +21,8 @@ def create_task_state(
         target = canonical_pipeline_path(task_id, harness_data)
     except PipelineStatePathError as error:
         raise TaskBootstrapError(str(error)) from error
+    if legacy_pipeline_path(task_id, harness_data).exists():
+        raise TaskBootstrapError(f"legacy task already exists: {task_id}")
     try:
         target.parent.mkdir(parents=True)
     except FileExistsError as error:
@@ -52,7 +55,7 @@ def main() -> int:
         arguments.task_id, arguments.repository, arguments.branch, arguments.worktree,
         arguments.harness_data,
     )
-    print(f"export CLAUDE_PIPELINE_TASK_ID={arguments.task_id}")
+    print(f"export CLAUDE_PIPELINE_TASK_ID={shlex.quote(arguments.task_id)}")
     return 0
 
 
