@@ -36,7 +36,7 @@ trimmed to front-load trigger words.
 | `harness-deploy` | Continuous deployment skill: environment-aware deploy with pre-flight checks, staging verification, production rollout, and rollback. |
 | `harness-deployment-verification` | Post-deploy verification: health checks, smoke tests against live URL, error rate monitoring, automatic rollback trigger. |
 | `harness-health-scan` | Scan a codebase for security vulnerabilities, dependency freshness, test coverage gaps, tech debt signals, and dead code. |
-| `harness-intake` | Classify a request as Discuss, Small Change, Build, or human-elevated High Risk before implementation work begins. |
+| `harness-intake` | Classify work gears and gate Small Change scope, approval, and typed TDD exceptions before implementation. |
 | `harness-module-extraction` | Extract a bounded context into an in-process module with an explicit public port (same repo, no new process or deploy unit). |
 | `harness-polish` | Lightweight mechanical cleanup pass you run yourself after Build, before code-review/security-review. |
 | `harness-pr-creation` | Ship a feature: GitHub pull request workflow with validation, feature branch management, and automated PR creation. |
