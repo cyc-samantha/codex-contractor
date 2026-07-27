@@ -761,9 +761,9 @@ PR is human-confirmed merged, T01 remains the next capability task.
 ### Logged delivery blocker: PR quality-gate helper resolution
 
 The current `harness-pr-creation` gate wrappers resolve shared helpers beneath
-`.agents/hooks/_lib/`, but this repository stores them beneath
-`.claude/hooks/_lib/`. The resulting missing helper functions make the
-quality-gate wrapper fail closed before a PR can be created.
+the nonexistent repository-local `.agents/hooks/_lib/` path, rather than the
+Claude-side `$HARNESS_ROOT/hooks/_lib/` install. The resulting missing helper
+functions make the quality-gate wrapper fail closed before a PR can be created.
 
 The next independent PR must correct the helper-resolution contract and add
 regression coverage that executes the wrappers from their shipped
