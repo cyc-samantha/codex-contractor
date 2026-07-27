@@ -781,7 +781,7 @@ quality gate or weaken its fail-closed behavior.
 | T13 | Planned | Define versioned role dispatch contracts with stable engineer and reviewer instance identities | T09, T11 |
 | T13A | Planned | Enforce the orchestrator protected-write boundary and coordination-artifact allowlist | T13 |
 | T13B | Planned | Emit the shared minimal envelope, aggregate task/run known totals plus unknown fields, and reconcile late PR identity | T13 |
-| T13C | Planned | Add deterministic base-plus-High-Risk model-effort precedence and fail-closed fallback handling | T13, T13B |
+| T13C | Planned | Add deterministic work-type model-effort allocation and fail-closed fallback handling | T13, T13B |
 | T13D | Planned | Dispatch the Software Engineer only after its shared envelope proves actual provider tokens or null-with-reason | T13A, T13B, T13C |
 | T14 | Planned | Add fresh read-only code review bound to task and HEAD with required shared-envelope coverage | T13D, T13B |
 | T15 | Planned | Return findings to the bound engineer and targeted re-review to the bound raising reviewer, with shared-envelope coverage for each spawn | T14, T13B |
