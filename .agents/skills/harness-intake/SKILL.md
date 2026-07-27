@@ -59,6 +59,22 @@ implementation_state: <create | none>
 
 For Discuss, set `implementation_state: none` and do not create a worktree, task state, commit, or PR.
 
+For Small Change, Build, and High Risk, initialize a canonical task after the
+registered worktree exists and before any source edit, test execution, review,
+or PR action. The task ID must be a safe, unique slug for the approved task;
+an existing task directory fails closed rather than being overwritten. Run the
+bootstrap command from the repository worktree and retain its exported value
+for every later pipeline command:
+
+```bash
+eval "$(python3 scripts/lib/task_bootstrap.py \
+  <task-id> <repository-root> <branch> <registered-worktree> <harness-data>)"
+```
+
+The command creates `${HARNESS_DATA}/pipeline-state/<task-id>/pipeline.md` and
+prints `CLAUDE_PIPELINE_TASK_ID`. Do not continue without that environment
+value; verification and PR gates bind their evidence to it.
+
 For Build and High Risk, record a plan before implementation.
 A medium or large plan requires explicit human approval; do not enter Build until that approval is recorded.
 

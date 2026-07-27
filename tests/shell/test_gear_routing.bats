@@ -122,3 +122,10 @@ setup() {
     "$SKILL"
   [ "$status" -eq 0 ]
 }
+
+@test "implementation intake initializes a canonical task before work begins" {
+  run grep -F 'scripts/lib/task_bootstrap.py' "$SKILL"
+  [ "$status" -eq 0 ]
+  run grep -F 'Do not continue without that environment' "$SKILL"
+  [ "$status" -eq 0 ]
+}
