@@ -4,18 +4,13 @@ One directory per harness skill, in Codex CLI's native Skills format
 (`<name>/SKILL.md` with `name` + `description` frontmatter, progressive
 disclosure, optional `scripts/`, `references/`, `assets/`).
 
-**Post-Phase-8-cull catalog (CX-80..87).** The Phase 7 pivot (contractor
-handoff model) made roughly 40 of the original ~60 ported skills, the
-`.codex/agents/` role-team concept, and the `memory/`/`learning/`/`eval/`
-port scaffolds obsolete — a contractor needs the handoff kit, the on-shift
-working discipline, and the enforcement hooks, not a dispatch layer. The
-keep-list below is **24 skills**: the handoff kit
-(`harness-resume-handoff`), ~20 on-shift working-discipline skills, and
-the two review skills rewritten as inline self-review procedures
-(`harness-code-review`, `harness-security-review` — CX-85). Full
-port-history and delete rationale: `PLAN.md` §5 Phase 8 and §6 Skill Port
-Catalog (kept as historical record — a `PROMPT` row there does NOT mean
-the skill survives this cull).
+**Standalone transition catalog.** The Phase 8 cull removed obsolete role-team
+and local runtime scaffolding. The catalog now contains **25 available
+skills**: the retained engineering and safety workflow plus
+`harness-intake`, which introduces standalone gear routing without claiming
+that later standalone runtime capabilities already exist. Historical port and
+delete rationale remains in `PLAN.md`; the active transition sequence is
+`docs/STANDALONE-CODEX-HARNESS-IMPLEMENTATION-PLAN.md`.
 
 Every ported directory is prefixed `harness-<name>` (Codex has no per-repo
 namespace, so the prefix avoids collision with a target repo's own skills
@@ -41,6 +36,7 @@ trimmed to front-load trigger words.
 | `harness-deploy` | Continuous deployment skill: environment-aware deploy with pre-flight checks, staging verification, production rollout, and rollback. |
 | `harness-deployment-verification` | Post-deploy verification: health checks, smoke tests against live URL, error rate monitoring, automatic rollback trigger. |
 | `harness-health-scan` | Scan a codebase for security vulnerabilities, dependency freshness, test coverage gaps, tech debt signals, and dead code. |
+| `harness-intake` | Classify a request as Discuss, Small Change, Build, or human-elevated High Risk before implementation work begins. |
 | `harness-module-extraction` | Extract a bounded context into an in-process module with an explicit public port (same repo, no new process or deploy unit). |
 | `harness-polish` | Lightweight mechanical cleanup pass you run yourself after Build, before code-review/security-review. |
 | `harness-pr-creation` | Ship a feature: GitHub pull request workflow with validation, feature branch management, and automated PR creation. |
@@ -55,8 +51,8 @@ trimmed to front-load trigger words.
 | `harness-verify` | Structured verification workflow: contract tests, smoke tests, mutation testing. |
 | `harness-web-frontend-patterns` | Web frontend tech-stack pattern reference (React/Next.js/Vite/Remix). Use for framework-specific build/debug/verify guidance. |
 
-**Aggregate `description:` character count across all 24 surviving
-skills: 3,373** (measured 2026-07-13 by summing each skill's SKILL.md
+**Aggregate `description:` character count across all 25 available
+skills: 3,487** (measured 2026-07-27 by summing each skill's SKILL.md
 `description:` frontmatter value — well under the 8,000-char cap; was
 8,516 pre-cull, CX-87 AC). Re-measure with:
 
