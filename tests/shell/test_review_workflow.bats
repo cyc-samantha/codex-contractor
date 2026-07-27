@@ -11,7 +11,7 @@ setup() {
     'fresh read-only collaboration reviewer Agent'
     '`collaboration.spawn_agent`'
     '`fork_turns: "none"`'
-    '`gpt-5.6-terra`'
+    '`gpt-5.6-sol`'
     '`medium` reasoning'
     'different model from the Builder'
     'fail closed'

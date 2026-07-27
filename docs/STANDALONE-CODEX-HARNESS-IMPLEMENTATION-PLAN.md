@@ -58,9 +58,23 @@ contradictory required fields fail closed.
 
 ### Target model and reasoning-effort policy
 
-Use one model family initially. Multi-model routing remains disabled until
-spawn telemetry provides evidence that its quality or cost benefit justifies
-the added variable.
+Emergency model-balance policy: use `gpt-5.6-terra` as the harness default
+model. Architecture, specification, and planning work (the Architect role),
+plus every formal reviewer role, use `gpt-5.6-sol`. This intentional
+role-based exception reduces routine task token consumption while reserving
+the higher-capability model for decisions and independent review. All other
+roles use the default unless a later, versioned policy explicitly overrides
+them.
+
+This replaces the initial single-model-family rollout assumption. The
+telemetry gate remains required before introducing any additional model route
+or changing this allocation.
+
+| Role group | Model |
+|---|---|
+| Default (including Software Engineer, Orchestrator, Verifier, and PR/observation artifacts) | `gpt-5.6-terra` |
+| Architect (brainstorm, specification, and planning) | `gpt-5.6-sol` |
+| Code Reviewer and Security Reviewer | `gpt-5.6-sol` |
 
 Reasoning effort is selected deterministically from role and gear, not chosen
 ad hoc by the spawned agent:
@@ -430,7 +444,8 @@ Engineer and fresh reviewer loop without a large role team.
    before enabling multi-role execution.
 5. Resolve model, reasoning effort, permissions, and fallback behavior from a
    deterministic role-and-gear policy.
-6. Keep all roles on one model family until telemetry supports a later change.
+6. Use the documented default-plus-Architect/reviewer model allocation; do
+   not introduce further model routes until telemetry supports a later change.
 7. Dispatch the Software Engineer into the claimed task worktree.
 8. Dispatch reviewers with read-only permission and fresh context.
 9. Bind review input to actual task, branch, and HEAD.

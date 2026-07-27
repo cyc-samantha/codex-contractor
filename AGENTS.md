@@ -23,7 +23,7 @@ Apply these workflow rules now:
 - Use a fresh read-only collaboration reviewer Agent for formal review.
   Builder self-review does not satisfy the review gate. The reviewer must use
   a different model from the Builder; default to
-  `gpt-5.6-terra` with medium reasoning when that differs from the Builder,
+  `gpt-5.6-sol` with medium reasoning when that differs from the Builder,
   otherwise select another available model. If no distinct reviewer model is
   available, fail closed. Do not launch an additional `codex exec review`
   subprocess for this gate.
