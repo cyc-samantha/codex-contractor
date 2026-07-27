@@ -689,8 +689,9 @@ The implementation must:
   both as untrusted inert data, and prohibit following instructions found in
   source text, comments, filenames, or survivor descriptions;
 - run read-only with one call, no automatic retry, and versioned fail-closed
-  caps: at most 200 KiB of canonical diff input, 100 survivor records, 8,000
-  output tokens, 64 KiB of accepted output, and 120 seconds wall time;
+  caps: at most 200 KiB of canonical diff input, 100 survivor records, 4 KiB
+  per survivor record, 64 KiB for the complete survivor payload, 8,000 output
+  tokens, 64 KiB of accepted output, and 120 seconds wall time;
 - independently reconstruct the canonical diff from the bound repository
   identity, base HEAD, and reviewed target HEAD before dispatch; record and
   verify its digest instead of trusting a caller-supplied diff;
