@@ -11,6 +11,7 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+HARNESS_ROOT="${HARNESS_ROOT:-${CLAUDE_PLUGIN_ROOT:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}}}"
 
 # Resolve worktree path — must be the worktree, not REPO_ROOT (GP-19 lesson).
 # Allow override via $WORKTREE env var for testing.
@@ -20,7 +21,7 @@ fi
 
 # Source the reusable gate lib.
 # shellcheck source=/dev/null
-source "$SCRIPT_DIR/../../../hooks/_lib/hook-pytest-gate.sh"
+source "${HARNESS_ROOT}/hooks/_lib/hook-pytest-gate.sh"
 
 # Guard: if WORKTREE HEAD is main/master the diff base is degenerate (empty),
 # and the gate cannot see any hook changes — emit a loud WARN (GP-19 trap).

@@ -2,7 +2,18 @@
 
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
+  APPROVAL_GATE="$REPO_ROOT/.agents/skills/harness-pr-creation/lib/check-approval-token.sh"
+  HOOK_PYTEST_GATE="$REPO_ROOT/.agents/skills/harness-pr-creation/lib/check-hook-pytest-gate.sh"
   QUALITY_GATE="$REPO_ROOT/.agents/skills/harness-pr-creation/lib/check-quality-gate.sh"
+}
+
+@test "PR gate wrappers load shared helpers from HARNESS_ROOT" {
+  wrappers=("$APPROVAL_GATE" "$HOOK_PYTEST_GATE" "$QUALITY_GATE")
+
+  for wrapper in "${wrappers[@]}"; do
+    run grep -F -- '"${HARNESS_ROOT}/hooks/_lib/' "$wrapper"
+    [ "$status" -eq 0 ]
+  done
 }
 
 @test "quality-gate wrapper honors its documented bypass before loading checks" {

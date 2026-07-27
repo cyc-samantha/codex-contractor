@@ -18,6 +18,7 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+HARNESS_ROOT="${HARNESS_ROOT:-${CLAUDE_PLUGIN_ROOT:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}}}"
 
 # The authorized escape hatch must not depend on the gate implementation it
 # exists to bypass. This also keeps migration-era missing helpers fail-closed
@@ -54,9 +55,9 @@ cd "$WORKTREE" || { echo "PR_BLOCKED — cannot cd to worktree: $WORKTREE"; exit
 
 # Source check libs (no pairing.sh, no jsonl-emit.sh — no _qg_finalize).
 # shellcheck source=/dev/null
-source "$SCRIPT_DIR/../../../hooks/_lib/check-bypass-gate.sh"
+source "${HARNESS_ROOT}/hooks/_lib/check-bypass-gate.sh"
 # shellcheck source=/dev/null
-source "$SCRIPT_DIR/../../../hooks/_lib/quality-gate-checks.sh"
+source "${HARNESS_ROOT}/hooks/_lib/quality-gate-checks.sh"
 
 # Honour bypass: CLAUDE_DISABLE_QUALITY_GATE=1 skips the entire gate.
 _cqg_check_bypass() {
