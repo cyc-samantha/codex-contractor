@@ -152,6 +152,34 @@ make_repository() {
   [ "$status" -eq 2 ]
 }
 
+@test "post-change fails closed when tracked evidence is unevaluable" {
+  unborn="$BATS_TEST_TMPDIR/unborn"
+  mkdir -p "$unborn"
+  git -C "$unborn" init -q
+  printf 'untracked\n' > "$unborn/README.md"
+
+  run "$GATE" "$SPEC" "$unborn" post-change \
+    true false false false false
+
+  [ "$status" -eq 2 ]
+}
+
+@test "rename validates both source and destination scope" {
+  make_repository
+  printf 'outside\n' > "$TEST_REPO/OUTSIDE.md"
+  git -C "$TEST_REPO" add OUTSIDE.md
+  git -C "$TEST_REPO" commit -qm outside
+  git -C "$TEST_REPO" mv OUTSIDE.md allowed.md
+  mutant="$BATS_TEST_TMPDIR/rename-spec.json"
+  jq '.expected_files = ["allowed.md"]' "$SPEC" > "$mutant"
+
+  run "$GATE" "$mutant" "$TEST_REPO" post-change \
+    true false false false false
+
+  [ "$status" -eq 3 ]
+  [ "$output" = "CONFIRM" ]
+}
+
 @test "canonical scope rejects an in-repository symlink escape" {
   make_repository
   outside="$BATS_TEST_TMPDIR/outside"

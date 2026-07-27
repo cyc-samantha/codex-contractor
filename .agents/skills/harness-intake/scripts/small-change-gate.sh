@@ -82,10 +82,10 @@ fi
 change_list="$(mktemp "${TMPDIR:-/tmp}/small-change-files.XXXXXX")" \
   || fail_closed
 trap 'rm -f "$change_list"' EXIT
-{
-  git -C "$repository" diff --name-only -z HEAD
-  git -C "$repository" ls-files --others --exclude-standard -z
-} > "$change_list" || fail_closed
+git -C "$repository" diff --no-renames --name-only -z HEAD \
+  > "$change_list" || fail_closed
+git -C "$repository" ls-files --others --exclude-standard -z \
+  >> "$change_list" || fail_closed
 
 [[ -s "$change_list" ]] || fail_closed
 
