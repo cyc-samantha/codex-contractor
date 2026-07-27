@@ -41,6 +41,7 @@ trimmed to front-load trigger words.
 | `harness-deploy` | Continuous deployment skill: environment-aware deploy with pre-flight checks, staging verification, production rollout, and rollback. |
 | `harness-deployment-verification` | Post-deploy verification: health checks, smoke tests against live URL, error rate monitoring, automatic rollback trigger. |
 | `harness-health-scan` | Scan a codebase for security vulnerabilities, dependency freshness, test coverage gaps, tech debt signals, and dead code. |
+| `harness-intake` | Classify a request as Discuss, Small Change, Build, or human-elevated High Risk before implementation work begins. |
 | `harness-module-extraction` | Extract a bounded context into an in-process module with an explicit public port (same repo, no new process or deploy unit). |
 | `harness-polish` | Lightweight mechanical cleanup pass you run yourself after Build, before code-review/security-review. |
 | `harness-pr-creation` | Ship a feature: GitHub pull request workflow with validation, feature branch management, and automated PR creation. |
@@ -55,8 +56,8 @@ trimmed to front-load trigger words.
 | `harness-verify` | Structured verification workflow: contract tests, smoke tests, mutation testing. |
 | `harness-web-frontend-patterns` | Web frontend tech-stack pattern reference (React/Next.js/Vite/Remix). Use for framework-specific build/debug/verify guidance. |
 
-**Aggregate `description:` character count across all 24 surviving
-skills: 3,373** (measured 2026-07-13 by summing each skill's SKILL.md
+**Aggregate `description:` character count across all 25 available
+skills: 3,487** (measured 2026-07-27 by summing each skill's SKILL.md
 `description:` frontmatter value — well under the 8,000-char cap; was
 8,516 pre-cull, CX-87 AC). Re-measure with:
 
