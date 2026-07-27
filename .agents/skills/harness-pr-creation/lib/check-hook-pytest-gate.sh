@@ -21,7 +21,9 @@ fi
 
 # Source the reusable gate lib.
 # shellcheck source=/dev/null
-source "${HARNESS_ROOT}/hooks/_lib/hook-pytest-gate.sh"
+source "${HARNESS_ROOT}/hooks/_lib/hook-pytest-gate.sh" || {
+  echo "PR_BLOCKED: cannot load hook-pytest helper." >&2; exit 2;
+}
 
 # Guard: if WORKTREE HEAD is main/master the diff base is degenerate (empty),
 # and the gate cannot see any hook changes — emit a loud WARN (GP-19 trap).

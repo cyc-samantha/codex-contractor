@@ -55,9 +55,13 @@ cd "$WORKTREE" || { echo "PR_BLOCKED — cannot cd to worktree: $WORKTREE"; exit
 
 # Source check libs (no pairing.sh, no jsonl-emit.sh — no _qg_finalize).
 # shellcheck source=/dev/null
-source "${HARNESS_ROOT}/hooks/_lib/check-bypass-gate.sh"
+source "${HARNESS_ROOT}/hooks/_lib/check-bypass-gate.sh" || {
+  echo "PR_BLOCKED: cannot load quality-gate bypass helper." >&2; exit 2;
+}
 # shellcheck source=/dev/null
-source "${HARNESS_ROOT}/hooks/_lib/quality-gate-checks.sh"
+source "${HARNESS_ROOT}/hooks/_lib/quality-gate-checks.sh" || {
+  echo "PR_BLOCKED: cannot load quality-gate checks helper." >&2; exit 2;
+}
 
 # Honour bypass: CLAUDE_DISABLE_QUALITY_GATE=1 skips the entire gate.
 _cqg_check_bypass() {
