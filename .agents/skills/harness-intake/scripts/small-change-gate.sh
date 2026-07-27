@@ -6,18 +6,25 @@ fail_closed() {
   exit 2
 }
 
-[[ "$#" -ge 6 ]] || fail_closed
+[[ "$#" -ge 8 ]] || fail_closed
 command -v jq >/dev/null 2>&1 || fail_closed
+command -v realpath >/dev/null 2>&1 || fail_closed
 
 spec="$1"
-already_requested="$2"
-ambiguous="$3"
-dependencies="$4"
-architecture_change="$5"
-scope_expansion="$6"
-shift 6
+repository="$2"
+already_requested="$3"
+ambiguous="$4"
+dependencies="$5"
+architecture_change="$6"
+scope_expansion="$7"
+shift 7
 
 [[ -f "$spec" ]] || fail_closed
+repository="$(cd "$repository" 2>/dev/null && pwd -P)" || fail_closed
+git_root="$(git -C "$repository" rev-parse --show-toplevel 2>/dev/null)" \
+  || fail_closed
+git_root="$(cd "$git_root" 2>/dev/null && pwd -P)" || fail_closed
+[[ "$repository" == "$git_root" ]] || fail_closed
 
 for value in "$already_requested" "$ambiguous" "$dependencies" \
   "$architecture_change" "$scope_expansion"; do
@@ -54,6 +61,13 @@ jq -e '
 ' "$spec" >/dev/null 2>&1 || fail_closed
 
 for touched_file in "$@"; do
+  [[ "$touched_file" != "." && "$touched_file" != /* \
+    && "$touched_file" != ./* && "$touched_file" != ../* \
+    && "$touched_file" != *"/../"* && "$touched_file" != *"/.." ]] \
+    || fail_closed
+  canonical_file="$(realpath -m -- "$repository/$touched_file")" \
+    || fail_closed
+  [[ "$canonical_file" == "$repository/"* ]] || fail_closed
   jq -e --arg file "$touched_file" \
     '.expected_files | index($file) != null' "$spec" >/dev/null || {
       echo "CONFIRM"

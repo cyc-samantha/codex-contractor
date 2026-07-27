@@ -89,14 +89,16 @@ scope change:
 
 ```bash
 .agents/skills/harness-intake/scripts/small-change-gate.sh \
-  <spec.json> <already-requested> <ambiguous> <dependencies> \
+  <spec.json> <repository-root> <already-requested> <ambiguous> <dependencies> \
   <architecture-change> <scope-expansion> [touched-file ...]
 ```
 
 `PROCEED` means the conversation plan has clear scope and boundaries and the
 human already requested implementation, so no second approval is required.
 `CONFIRM` means implementation must pause for human confirmation. Missing or
-malformed contract data fails closed.
+malformed contract data fails closed. At least one touched file is required;
+the gate resolves every touched path beneath the bound Git repository root and
+rejects canonical paths that escape through a symlink.
 
 Automatic High Risk triggers and downgrade enforcement are defined by T16;
 until T16 merges, only explicit human elevation selects High Risk through this
