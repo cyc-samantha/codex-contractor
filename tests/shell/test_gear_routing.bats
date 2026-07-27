@@ -129,3 +129,17 @@ setup() {
   run grep -F 'Do not continue without that environment' "$SKILL"
   [ "$status" -eq 0 ]
 }
+
+@test "failed task bootstrap clears stale task identity and blocks intake" {
+  run bash -c '
+    CLAUDE_PIPELINE_TASK_ID=stale-task
+    unset CLAUDE_PIPELINE_TASK_ID
+    bootstrap_export="$(false)" || {
+      test -z "${CLAUDE_PIPELINE_TASK_ID:-}" || exit 1
+      exit 2
+    }
+    eval "$bootstrap_export"
+  '
+
+  [ "$status" -eq 2 ]
+}
