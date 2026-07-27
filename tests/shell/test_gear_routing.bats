@@ -3,15 +3,40 @@
 setup() {
   REPO_ROOT="$(cd "$BATS_TEST_DIRNAME/../.." && pwd)"
   SKILL="$REPO_ROOT/.agents/skills/harness-intake/SKILL.md"
+  ROUTER="$REPO_ROOT/.agents/skills/harness-intake/scripts/route.sh"
 }
 
-@test "intake skill exposes the four approved gears" {
-  [ -f "$SKILL" ]
+@test "structured intake routes the approved decision table" {
+  [ -x "$ROUTER" ]
 
-  for gear in "Discuss" "Small Change" "Build" "High Risk"; do
-    run grep -F -- "$gear" "$SKILL"
+  cases=(
+    "question false false false false|Discuss"
+    "documentation true false false false|Small Change"
+    "configuration false false false false|Build"
+    "bug true false false false|Build"
+    "feature true false false false|Build"
+    "refactor true false false false|Build"
+    "question true false false true|High Risk"
+  )
+
+  for case in "${cases[@]}"; do
+    inputs="${case%%|*}"
+    expected="${case#*|}"
+    run "$ROUTER" $inputs
     [ "$status" -eq 0 ]
+    [ "$output" = "$expected" ]
   done
+}
+
+@test "skill catalog describes the standalone transition consistently" {
+  CATALOG="$REPO_ROOT/.agents/skills/README.md"
+
+  run grep -F 'The catalog now contains **25 available' "$CATALOG"
+  [ "$status" -eq 0 ]
+  run grep -F 'contractor handoff model' "$CATALOG"
+  [ "$status" -eq 1 ]
+  run grep -F 'keep-list below is **24 skills**' "$CATALOG"
+  [ "$status" -eq 1 ]
 }
 
 @test "routing table keeps implementation out of Discuss" {
@@ -39,8 +64,23 @@ setup() {
 }
 
 @test "uncertain or expanded scope fails upward to Build" {
+  cases=(
+    "documentation false false false"
+    "documentation true true false"
+    "documentation true false true"
+    "unknown true false false"
+  )
+
+  for inputs in "${cases[@]}"; do
+    run "$ROUTER" $inputs false
+    [ "$status" -eq 0 ]
+    [ "$output" = "Build" ]
+  done
+}
+
+@test "Build approval gate blocks unapproved medium and large plans" {
   run grep -F \
-    'If scope, dependencies, architecture impact, or classification is uncertain, choose Build.' \
+    'A medium or large plan requires explicit human approval; do not enter Build until that approval is recorded.' \
     "$SKILL"
 
   [ "$status" -eq 0 ]

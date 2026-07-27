@@ -4,18 +4,13 @@ One directory per harness skill, in Codex CLI's native Skills format
 (`<name>/SKILL.md` with `name` + `description` frontmatter, progressive
 disclosure, optional `scripts/`, `references/`, `assets/`).
 
-**Post-Phase-8-cull catalog (CX-80..87).** The Phase 7 pivot (contractor
-handoff model) made roughly 40 of the original ~60 ported skills, the
-`.codex/agents/` role-team concept, and the `memory/`/`learning/`/`eval/`
-port scaffolds obsolete — a contractor needs the handoff kit, the on-shift
-working discipline, and the enforcement hooks, not a dispatch layer. The
-keep-list below is **24 skills**: the handoff kit
-(`harness-resume-handoff`), ~20 on-shift working-discipline skills, and
-the two review skills rewritten as inline self-review procedures
-(`harness-code-review`, `harness-security-review` — CX-85). Full
-port-history and delete rationale: `PLAN.md` §5 Phase 8 and §6 Skill Port
-Catalog (kept as historical record — a `PROMPT` row there does NOT mean
-the skill survives this cull).
+**Standalone transition catalog.** The Phase 8 cull removed obsolete role-team
+and local runtime scaffolding. The catalog now contains **25 available
+skills**: the retained engineering and safety workflow plus
+`harness-intake`, which introduces standalone gear routing without claiming
+that later standalone runtime capabilities already exist. Historical port and
+delete rationale remains in `PLAN.md`; the active transition sequence is
+`docs/STANDALONE-CODEX-HARNESS-IMPLEMENTATION-PLAN.md`.
 
 Every ported directory is prefixed `harness-<name>` (Codex has no per-repo
 namespace, so the prefix avoids collision with a target repo's own skills

@@ -9,6 +9,19 @@ Classify each new request before creating implementation state. This skill
 records the route; it does not implement the request or encode the automatic
 High Risk trigger catalog.
 
+Translate the request into these ordered inputs, then run:
+
+```bash
+.agents/skills/harness-intake/scripts/route.sh \
+  <kind> <scope-clear> <dependency-change> <architecture-change> \
+  <human-elevated>
+```
+
+Boolean inputs use `true` or `false`. Supported `kind` values are `question`,
+`research`, `brainstorm`, `architecture-discussion`, `documentation`,
+`configuration`, `bug`, `feature`, and `refactor`. An unknown value routes to
+Build.
+
 ## Routing order
 
 Apply these rules in order:
@@ -44,8 +57,9 @@ implementation_state: <create | none>
 
 For Discuss, set `implementation_state: none` and do not create a worktree, task state, commit, or PR.
 
-For an implementation gear, report the classification and continue under the
-workflow in `AGENTS.md`. Small Change specification and approval behavior are
+For Build and High Risk, record a plan before implementation.
+A medium or large plan requires explicit human approval; do not enter Build until that approval is recorded.
+Small Change specification and approval behavior are
 defined by T04. Automatic High Risk triggers and downgrade enforcement are
 defined by T16; until T16 merges, only explicit human elevation selects High
 Risk through this skill.
