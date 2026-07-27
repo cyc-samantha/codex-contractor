@@ -20,7 +20,9 @@ Translate the request into these ordered inputs, then run:
 Boolean inputs use `true` or `false`. Supported `kind` values are `question`,
 `research`, `brainstorm`, `architecture-discussion`, `documentation`,
 `configuration`, `bug`, `feature`, and `refactor`. An unknown value routes to
-Build.
+Build. Any other kind, missing argument, or non-canonical boolean fails closed
+with exit 2. Dependency or architecture changes route to Build even when the
+request would otherwise be Discuss.
 
 ## Routing order
 

@@ -68,6 +68,8 @@ setup() {
     "documentation false false false"
     "documentation true true false"
     "documentation true false true"
+    "question true true false"
+    "question true false true"
     "unknown true false false"
   )
 
@@ -75,6 +77,19 @@ setup() {
     run "$ROUTER" $inputs false
     [ "$status" -eq 0 ]
     [ "$output" = "Build" ]
+  done
+}
+
+@test "malformed routing input fails closed" {
+  cases=(
+    "question true false false"
+    "question true false false TRUE"
+    "other true false false false"
+  )
+
+  for inputs in "${cases[@]}"; do
+    run "$ROUTER" $inputs
+    [ "$status" -eq 2 ]
   done
 }
 
