@@ -6,8 +6,31 @@ setup() {
   SPEC="$REPO_ROOT/tests/fixtures/small-change/compact-spec.json"
 }
 
+make_repository() {
+  TEST_REPO="$BATS_TEST_TMPDIR/repository-$BATS_TEST_NUMBER"
+  mkdir -p "$TEST_REPO"
+  git -C "$TEST_REPO" init -q
+  git -C "$TEST_REPO" config user.email test@example.invalid
+  git -C "$TEST_REPO" config user.name Test
+  printf 'initial\n' > "$TEST_REPO/README.md"
+  git -C "$TEST_REPO" add README.md
+  git -C "$TEST_REPO" commit -qm initial
+}
+
 @test "complete compact specification may proceed without second approval" {
-  run "$GATE" "$SPEC" "$REPO_ROOT" true false false false false README.md
+  run "$GATE" "$SPEC" "$REPO_ROOT" preflight \
+    true false false false false
+
+  [ "$status" -eq 0 ]
+  [ "$output" = "PROCEED" ]
+}
+
+@test "post-change derives an allowed touched file from Git" {
+  make_repository
+  printf 'changed\n' > "$TEST_REPO/README.md"
+
+  run "$GATE" "$SPEC" "$TEST_REPO" post-change \
+    true false false false false
 
   [ "$status" -eq 0 ]
   [ "$output" = "PROCEED" ]
@@ -26,8 +49,29 @@ setup() {
   for field in "${fields[@]}"; do
     mutant="$BATS_TEST_TMPDIR/missing-$field.json"
     jq "del(.$field)" "$SPEC" > "$mutant"
-    run "$GATE" "$mutant" "$REPO_ROOT" true false false false false README.md
+    run "$GATE" "$mutant" "$REPO_ROOT" preflight \
+      true false false false false
     [ "$status" -eq 2 ]
+  done
+}
+
+@test "typed TDD exceptions accept the approved enum" {
+  exception_types=(
+    docs_only
+    generated_artifact
+    non_executable_metadata
+    test_infrastructure_only
+    exploratory_spike
+  )
+
+  for exception_type in "${exception_types[@]}"; do
+    mutant="$BATS_TEST_TMPDIR/exception-$exception_type.json"
+    jq --arg type "$exception_type" \
+      '.tdd_exception = {type: $type, rationale: "Recorded exception"}' \
+      "$SPEC" > "$mutant"
+    run "$GATE" "$mutant" "$REPO_ROOT" preflight \
+      true false false false false
+    [ "$status" -eq 0 ]
   done
 }
 
@@ -37,9 +81,11 @@ setup() {
   jq '.tdd_exception.type = "skip_tests"' "$SPEC" > "$unknown"
   jq '.tdd_exception.rationale = ""' "$SPEC" > "$missing_rationale"
 
-  run "$GATE" "$unknown" "$REPO_ROOT" true false false false false README.md
+  run "$GATE" "$unknown" "$REPO_ROOT" preflight \
+    true false false false false
   [ "$status" -eq 2 ]
-  run "$GATE" "$missing_rationale" "$REPO_ROOT" true false false false false README.md
+  run "$GATE" "$missing_rationale" "$REPO_ROOT" preflight \
+    true false false false false
   [ "$status" -eq 2 ]
 }
 
@@ -53,25 +99,32 @@ setup() {
   )
 
   for flags in "${confirmation_cases[@]}"; do
-    run "$GATE" "$SPEC" "$REPO_ROOT" $flags README.md
+    run "$GATE" "$SPEC" "$REPO_ROOT" preflight $flags
     [ "$status" -eq 3 ]
     [ "$output" = "CONFIRM" ]
   done
 }
 
 @test "file outside expected scope requires confirmation" {
-  run "$GATE" "$SPEC" "$REPO_ROOT" true false false false false README.md AGENTS.md
+  make_repository
+  printf 'outside\n' > "$TEST_REPO/AGENTS.md"
+
+  run "$GATE" "$SPEC" "$TEST_REPO" post-change \
+    true false false false false
 
   [ "$status" -eq 3 ]
   [ "$output" = "CONFIRM" ]
 }
 
 @test "malformed gate inputs fail closed" {
-  run "$GATE" "$SPEC" "$REPO_ROOT" TRUE false false false false README.md
+  run "$GATE" "$SPEC" "$REPO_ROOT" preflight \
+    TRUE false false false false
   [ "$status" -eq 2 ]
-  run "$GATE" "$SPEC" "$REPO_ROOT" true false false false false
+  run "$GATE" "$SPEC" "$REPO_ROOT" unknown \
+    true false false false false
   [ "$status" -eq 2 ]
-  run "$GATE" "$BATS_TEST_TMPDIR/absent.json" "$REPO_ROOT" true false false false false README.md
+  run "$GATE" "$BATS_TEST_TMPDIR/absent.json" "$REPO_ROOT" preflight \
+    true false false false false
   [ "$status" -eq 2 ]
 }
 
@@ -85,28 +138,30 @@ setup() {
   for unsafe_path in "${unsafe_paths[@]}"; do
     mutant="$BATS_TEST_TMPDIR/unsafe-${unsafe_path//\//_}.json"
     jq --arg path "$unsafe_path" '.expected_files = [$path]' "$SPEC" > "$mutant"
-    run "$GATE" "$mutant" "$REPO_ROOT" true false false false false "$unsafe_path"
+    run "$GATE" "$mutant" "$REPO_ROOT" preflight \
+      true false false false false
     [ "$status" -eq 2 ]
   done
 }
 
-@test "touched-file evidence is mandatory" {
-  run "$GATE" "$SPEC" "$REPO_ROOT" true false false false false
+@test "post-change fails closed without Git change evidence" {
+  make_repository
+  run "$GATE" "$SPEC" "$TEST_REPO" post-change \
+    true false false false false
 
   [ "$status" -eq 2 ]
 }
 
 @test "canonical scope rejects an in-repository symlink escape" {
-  fixture_root="$BATS_TEST_TMPDIR/repository"
+  make_repository
   outside="$BATS_TEST_TMPDIR/outside"
-  mkdir -p "$fixture_root" "$outside"
-  git -C "$fixture_root" init -q
-  ln -s "$outside" "$fixture_root/escape"
+  mkdir -p "$outside"
+  ln -s "$outside" "$TEST_REPO/escape"
   mutant="$BATS_TEST_TMPDIR/symlink-spec.json"
-  jq '.expected_files = ["escape/outside.md"]' "$SPEC" > "$mutant"
+  jq '.expected_files = ["escape"]' "$SPEC" > "$mutant"
 
-  run "$GATE" "$mutant" "$fixture_root" true false false false false \
-    escape/outside.md
+  run "$GATE" "$mutant" "$TEST_REPO" post-change \
+    true false false false false
 
   [ "$status" -eq 2 ]
 }

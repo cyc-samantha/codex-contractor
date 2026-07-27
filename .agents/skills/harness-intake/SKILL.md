@@ -74,31 +74,36 @@ Before implementing a Small Change, write a JSON compact specification with:
   "expected_files": ["<repository-relative path>"],
   "verification": ["<command or check>"],
   "tdd_exception": {
-    "type": "none | docs_only",
+    "type": "none | docs_only | generated_artifact | non_executable_metadata | test_infrastructure_only | exploratory_spike",
     "rationale": null
   }
 }
 ```
 
 Use `type: none` with a null rationale when executable behavior requires TDD.
-Use `type: docs_only` with a non-empty rationale only when the change affects
-prose and has no executable behavior.
+Every exception type requires a non-empty rationale. Use `docs_only` only for
+prose, `generated_artifact` for reproducible generated output,
+`non_executable_metadata` for declarative metadata, `test_infrastructure_only`
+for test harness changes with no product behavior, and `exploratory_spike` for
+explicitly non-shipping research.
 
 Run the Small Change gate before implementation and whenever touched files or
 scope change:
 
 ```bash
 .agents/skills/harness-intake/scripts/small-change-gate.sh \
-  <spec.json> <repository-root> <already-requested> <ambiguous> <dependencies> \
-  <architecture-change> <scope-expansion> [touched-file ...]
+  <spec.json> <repository-root> <preflight | post-change> \
+  <already-requested> <ambiguous> <dependencies> <architecture-change> \
+  <scope-expansion>
 ```
 
 `PROCEED` means the conversation plan has clear scope and boundaries and the
 human already requested implementation, so no second approval is required.
 `CONFIRM` means implementation must pause for human confirmation. Missing or
 malformed contract data fails closed. At least one touched file is required;
-the gate resolves every touched path beneath the bound Git repository root and
-rejects canonical paths that escape through a symlink.
+`post-change` derives the complete touched-file set from Git rather than
+trusting caller input. It resolves every touched path beneath the bound Git
+repository root and rejects canonical paths that escape through a symlink.
 
 Automatic High Risk triggers and downgrade enforcement are defined by T16;
 until T16 merges, only explicit human elevation selects High Risk through this
