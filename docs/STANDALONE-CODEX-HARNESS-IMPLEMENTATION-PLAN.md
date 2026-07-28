@@ -751,17 +751,17 @@ This plan-only governance change does not implement a runtime capability and
 does not consume a capability task ID. T00 is complete. After this governance
 PR is human-confirmed merged, T01 remains the next capability task.
 
-### Logged delivery blocker: PR quality-gate helper resolution
+### Resolved delivery blocker: PR quality-gate helper resolution
 
-The current `harness-pr-creation` gate wrappers resolve shared helpers beneath
+The `harness-pr-creation` gate wrappers previously resolved shared helpers beneath
 the nonexistent repository-local `.agents/hooks/_lib/` path, rather than the
 Claude-side `$HARNESS_ROOT/hooks/_lib/` install. The resulting missing helper
-functions make the quality-gate wrapper fail closed before a PR can be created.
+functions made the quality-gate wrapper fail closed before a PR could be created.
 
-The next independent PR must correct the helper-resolution contract and add
+PR #22 resolved this by correcting the helper-resolution contract and adding
 regression coverage that executes the wrappers from their shipped
-`.agents/skills/harness-pr-creation/lib/` location. It must not bypass the
-quality gate or weaken its fail-closed behavior.
+`.agents/skills/harness-pr-creation/lib/` location, without bypassing the
+quality gate or weakening its fail-closed behavior.
 
 | Task | Status | One-PR outcome | Depends on |
 |---|---|---|---|
@@ -774,7 +774,7 @@ quality gate or weaken its fail-closed behavior.
 | T06 | Complete | Validate pipeline identity, versions, and required fields | T05 |
 | T07 | Complete | Write canonical pipeline state atomically | T06 |
 | T08 | Complete | Discover repository-matching tasks read-only | T07 |
-| T09 | Planned | Add human-confirmed new-task and resume selection | T08 |
+| T09 | Complete | Add human-confirmed new-task and resume selection | T08 |
 | T10 | Planned | Acquire one atomic writer claim per task | T07 |
 | T11 | Planned | Add identity-safe claim heartbeat and release | T10 |
 | T12 | Planned | Add human-confirmed claim takeover and trajectory archive | T11 |
