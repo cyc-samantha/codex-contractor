@@ -29,7 +29,7 @@ trimmed to front-load trigger words.
 | `harness-bug-fix` | Root cause analysis workflow with incremental TDD for bug fixes. Covers reproduce, analyze, regression test, fix, verify, and prevent. |
 | `harness-build-implementation` | Structured Build-phase TDD implementation: RED-GREEN-REFACTOR per slice, mutation kill loop. Use when implementing acceptance criteria after a plan is approved. |
 | `harness-changelog` | Use to ship a PR with a human-readable narrative and changelog entry: derives a 'what changed and why' PR body plus a Keep-a-Changelog entry from the diff and ACs. |
-| `harness-code-review` | Inline self-review pass over your own diff before handing work back: SOLID/DRY, cohesion, test quality, complexity, naming. Run this on yourself — there is no separate reviewer to spawn. |
+| `harness-code-review` | Formal review through a fresh, read-only reviewer Agent using a model distinct from the Builder. |
 | `harness-db-migration` | Structured database migration workflow. |
 | `harness-debt-ledger` | Advisory grep-collector that harvests every `DEBT:` deliberate-simplification marker across the tree, renders a ledger grouped by file, and flags `no-trigger` entries. |
 | `harness-debug` | Persistent debug state management for complex, multi-session bugs. Maintains structured debug state files under HARNESS_DATA that survive context compaction. |

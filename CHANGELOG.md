@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com).
 
 ### Added
 
+- Add read-only discovery of repository-matching active pipeline tasks
 - Add symlink-safe atomic writes for canonical pipeline state
 - Add managed Python mutation tooling with a 70% score gate for pipeline state
 - Add fail-closed validation for canonical and legacy pipeline state documents
