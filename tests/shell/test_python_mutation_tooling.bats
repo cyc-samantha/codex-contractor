@@ -19,8 +19,8 @@ from pathlib import Path
 
 config = tomllib.loads(Path("pyproject.toml").read_text())["tool"]["mutmut"]
 assert config["source_paths"] == ["scripts/lib"]
-assert config["only_mutate"] == ["scripts/lib/pipeline_state.py", "scripts/lib/task_discovery.py"]
-assert config["pytest_add_cli_args_test_selection"] == ["tests/test_pipeline_state.py", "tests/test_task_discovery.py"]
+assert config["only_mutate"] == ["scripts/lib/pipeline_state.py", "scripts/lib/task_discovery.py", "scripts/lib/task_selection.py"]
+assert config["pytest_add_cli_args_test_selection"] == ["tests/test_pipeline_state.py", "tests/test_task_discovery.py", "tests/test_task_selection.py"]
 '
 
   [ "$status" -eq 0 ]
@@ -35,7 +35,7 @@ assert config["pytest_add_cli_args_test_selection"] == ["tests/test_pipeline_sta
 }
 
 @test "PR filtering protects mutation tooling and its Python test suite" {
-  paths=(pyproject.toml requirements-dev.txt "scripts/**" tests/test_pipeline_state.py tests/test_task_discovery.py)
+  paths=(pyproject.toml requirements-dev.txt "scripts/**" tests/test_pipeline_state.py tests/test_task_discovery.py tests/test_task_selection.py)
   for path in "${paths[@]}"; do
     run grep -F -- "- \"$path\"" "$REPO_ROOT/.github/workflows/harness-gate.yml"
     [ "$status" -eq 0 ]

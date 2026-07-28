@@ -1,4 +1,4 @@
 [tool.mutmut]
 source_paths = ["scripts/lib"]
-only_mutate = ["scripts/lib/pipeline_state.py", "scripts/lib/task_discovery.py"]
-pytest_add_cli_args_test_selection = ["tests/test_pipeline_state.py", "tests/test_task_discovery.py"]
+only_mutate = ["scripts/lib/pipeline_state.py", "scripts/lib/task_discovery.py", "scripts/lib/task_selection.py"]
+pytest_add_cli_args_test_selection = ["tests/test_pipeline_state.py", "tests/test_task_discovery.py", "tests/test_task_selection.py"]
