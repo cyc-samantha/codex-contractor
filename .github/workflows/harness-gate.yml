@@ -25,6 +25,7 @@ on:
       - "tests/test_pipeline_state.py"
       - "tests/test_task_discovery.py"
       - "tests/test_task_selection.py"
+      - "tests/test_writer_claim.py"
       - "AGENTS.md"
   workflow_dispatch: {}
 
