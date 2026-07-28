@@ -20,6 +20,9 @@ on:
       - "tests/shell/**"
       - ".github/workflows/harness-gate.yml"
       - "scripts/**"
+      - "pyproject.toml"
+      - "requirements-dev.txt"
+      - "tests/test_pipeline_state.py"
       - "AGENTS.md"
   workflow_dispatch: {}
 

@@ -34,6 +34,14 @@ assert config["pytest_add_cli_args_test_selection"] == ["tests/test_pipeline_sta
   [ "$status" -eq 0 ]
 }
 
+@test "PR filtering protects mutation tooling and its Python test suite" {
+  paths=(pyproject.toml requirements-dev.txt "scripts/**" tests/test_pipeline_state.py)
+  for path in "${paths[@]}"; do
+    run grep -F -- "- \"$path\"" "$REPO_ROOT/.github/workflows/harness-gate.yml"
+    [ "$status" -eq 0 ]
+  done
+}
+
 @test "README documents isolated Python setup and the mutation command" {
   run grep -F "python3 -m venv .venv" "$REPO_ROOT/README.md"
   [ "$status" -eq 0 ]
