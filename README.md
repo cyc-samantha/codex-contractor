@@ -37,6 +37,23 @@ Run `bats tests/shell/` to execute the enforcement-hook test suite.
 Requires `bats` and `jq` on `PATH`. CI runs the same command via
 `.github/workflows/harness-gate.yml`.
 
+### Python mutation testing
+
+Create an isolated local environment; do not commit `.venv/`:
+
+```bash
+python3 -m venv .venv
+. .venv/bin/activate
+python3 -m pip install -r requirements-dev.txt
+mutmut run
+mutmut results --all true | python3 scripts/check-mutation-score.py
+```
+
+The checked-in mutmut configuration limits mutation testing to
+`scripts/lib/pipeline_state.py` and its unit tests. The score check enforces
+the required 70% killed-mutant threshold; use `mutmut results` to inspect any
+surviving mutants.
+
 ## Layout
 
 - `AGENTS.md` — merged CLAUDE.md + rules/core.md, Codex-native autoload
