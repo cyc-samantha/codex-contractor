@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import os
 from pathlib import Path
+import tempfile
 
 if __package__:
     from .pipeline_state_paths import (
@@ -75,6 +77,18 @@ def read_pipeline_state(
     raise PipelineStateNotFound(f"pipeline state not found for task: {task_id}")
 
 
+def write_pipeline_state(
+    task_id: str, fields: dict[str, str], harness_data: Path | None = None
+) -> PipelineStateDocument:
+    path = canonical_pipeline_path(task_id, harness_data)
+    content = _serialize_fields(fields)
+    _validate_state("canonical", fields, task_id)
+    assert_pipeline_path(path, harness_data)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _replace_atomically(path, content)
+    return PipelineStateDocument("canonical", path, content, fields)
+
+
 def _parse_fields(content: str) -> dict[str, str]:
     fields: dict[str, str] = {}
     for line in content.splitlines():
@@ -85,6 +99,35 @@ def _parse_fields(content: str) -> dict[str, str]:
             raise PipelineStateValidationError("malformed pipeline state field")
         fields[key] = value.strip()
     return fields
+
+
+def _serialize_fields(fields: dict[str, str]) -> str:
+    if not _contains_only_string_fields(fields):
+        raise PipelineStateValidationError("pipeline state fields must be strings")
+    content = "".join(f"{key}: {value}\n" for key, value in fields.items())
+    if _parse_fields(content) != fields:
+        raise PipelineStateValidationError("pipeline state fields cannot be serialized safely")
+    return content
+
+
+def _contains_only_string_fields(fields: dict[str, str]) -> bool:
+    return all(isinstance(key, str) and isinstance(value, str) for key, value in fields.items())
+
+
+def _replace_atomically(path: Path, content: str) -> None:
+    temporary_path = _write_temporary_file(path.parent, content)
+    try:
+        os.replace(temporary_path, path)
+    finally:
+        Path(temporary_path).unlink(missing_ok=True)
+
+
+def _write_temporary_file(directory: Path, content: str) -> str:
+    with tempfile.NamedTemporaryFile(
+        mode="w", encoding="utf-8", dir=directory, prefix=".pipeline.", delete=False
+    ) as temporary_file:
+        temporary_file.write(content)
+        return temporary_file.name
 
 
 def _is_malformed_field(key: str, separator: str, value: str, fields: dict[str, str]) -> bool:
