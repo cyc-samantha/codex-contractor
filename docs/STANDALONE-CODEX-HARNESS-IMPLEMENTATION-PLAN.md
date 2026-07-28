@@ -773,7 +773,7 @@ quality gate or weaken its fail-closed behavior.
 | T05 | Complete | Read canonical pipeline paths and supported legacy paths | T01 |
 | T06 | Complete | Validate pipeline identity, versions, and required fields | T05 |
 | T07 | Complete | Write canonical pipeline state atomically | T06 |
-| T08 | Planned | Discover repository-matching tasks read-only | T07 |
+| T08 | Complete | Discover repository-matching tasks read-only | T07 |
 | T09 | Planned | Add human-confirmed new-task and resume selection | T08 |
 | T10 | Planned | Acquire one atomic writer claim per task | T07 |
 | T11 | Planned | Add identity-safe claim heartbeat and release | T10 |

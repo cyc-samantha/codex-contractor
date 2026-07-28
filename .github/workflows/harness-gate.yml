@@ -24,6 +24,7 @@ on:
       - "requirements-dev.txt"
       - "tests/test_pipeline_state.py"
       - "tests/test_task_discovery.py"
+      - "tests/test_task_selection.py"
       - "AGENTS.md"
   workflow_dispatch: {}
 
