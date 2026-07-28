@@ -766,12 +766,12 @@ quality gate or weaken its fail-closed behavior.
 | Task | Status | One-PR outcome | Depends on |
 |---|---|---|---|
 | T00 | Complete | Add synthetic state fixtures and pin the existing test baseline | none |
-| T01 | Next | Document the versioned pipeline compatibility matrix | T00 |
-| T02 | Planned | Document the proposed standalone transition without claiming it is active | T01 |
-| T03 | Planned | Add Discuss/Small Change/Build routing plus manual High Risk elevation | T01 |
-| T04 | Planned | Add Small Change compact-spec and approval behavior | T03 |
-| T05 | Planned | Read canonical pipeline paths and supported legacy paths | T01 |
-| T06 | Planned | Validate pipeline identity, versions, and required fields | T05 |
+| T01 | Complete | Document the versioned pipeline compatibility matrix | T00 |
+| T02 | Complete | Document the proposed standalone transition without claiming it is active | T01 |
+| T03 | Complete | Add Discuss/Small Change/Build routing plus manual High Risk elevation | T01 |
+| T04 | Complete | Add Small Change compact-spec and approval behavior | T03 |
+| T05 | Complete | Read canonical pipeline paths and supported legacy paths | T01 |
+| T06 | Complete | Validate pipeline identity, versions, and required fields | T05 |
 | T07 | Planned | Write canonical pipeline state atomically | T06 |
 | T08 | Planned | Discover repository-matching tasks read-only | T07 |
 | T09 | Planned | Add human-confirmed new-task and resume selection | T08 |

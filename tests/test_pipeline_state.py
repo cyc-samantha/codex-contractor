@@ -8,11 +8,13 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import scripts.lib.pipeline_state as pipeline_state
 from scripts.lib.pipeline_state import (
     PipelineStateNotFound,
     PipelineStatePathError,
     PipelineStateValidationError,
     read_pipeline_state,
+    write_pipeline_state,
 )
 from scripts.lib.pipeline_state_paths import canonical_pipeline_path, harness_data_root
 
@@ -171,6 +173,101 @@ class PipelineStateReaderTest(unittest.TestCase):
         with self.assertRaisesRegex(PipelineStateValidationError, "updated_by"):
             read_pipeline_state("task-06", self.harness_data)
 
+    def test_writes_and_reads_canonical_state_without_creating_legacy_state(self) -> None:
+        fields = self._canonical_fields("task-07")
+
+        state = write_pipeline_state("task-07", fields, self.harness_data)
+
+        self.assertEqual(state.layout, "canonical")
+        self.assertEqual(state.fields, fields)
+        self.assertEqual(read_pipeline_state("task-07", self.harness_data).fields, fields)
+        self.assertFalse((self.harness_data / "pipeline-state/task-07-pipeline.md").exists())
+
+    def test_preserves_completed_canonical_state(self) -> None:
+        fields = self._canonical_fields("task-07") | {
+            "phase": "ship",
+            "status": "completed",
+            "verdict": "merged",
+        }
+
+        write_pipeline_state("task-07", fields, self.harness_data)
+
+        self.assertEqual(read_pipeline_state("task-07", self.harness_data).fields, fields)
+
+    def test_atomic_replace_failure_leaves_the_previous_valid_state_intact(self) -> None:
+        old_fields = self._canonical_fields("task-07")
+        write_pipeline_state("task-07", old_fields, self.harness_data)
+        target = self.harness_data / "pipeline-state/task-07/pipeline.md"
+        old_content = target.read_text()
+        new_fields = old_fields | {"updated_at": "tomorrow"}
+
+        with patch("scripts.lib.pipeline_state.os.replace", side_effect=OSError("interrupted")):
+            with self.assertRaisesRegex(OSError, "interrupted"):
+                write_pipeline_state("task-07", new_fields, self.harness_data)
+
+        self.assertEqual(target.read_text(), old_content)
+        self.assertEqual(list(target.parent.glob(".pipeline.*")), [])
+
+    def test_rejects_invalid_writer_input_without_creating_state(self) -> None:
+        fields = self._canonical_fields("wrong-task")
+
+        with self.assertRaisesRegex(PipelineStateValidationError, "task_id"):
+            write_pipeline_state("task-07", fields, self.harness_data)
+
+        self.assertFalse((self.harness_data / "pipeline-state").exists())
+
+    def test_rejects_non_string_writer_fields(self) -> None:
+        fields = self._canonical_fields("task-07")
+        fields["updated_by"] = []
+
+        with self.assertRaisesRegex(PipelineStateValidationError, "strings"):
+            write_pipeline_state("task-07", fields, self.harness_data)
+
+    def test_rejects_writer_paths_that_escape_through_a_symlink(self) -> None:
+        with tempfile.TemporaryDirectory() as outside_directory:
+            state_root = self.harness_data / "pipeline-state"
+            state_root.mkdir()
+            (state_root / "task-07").symlink_to(outside_directory, target_is_directory=True)
+
+            with self.assertRaises(PipelineStatePathError):
+                write_pipeline_state("task-07", self._canonical_fields("task-07"), self.harness_data)
+
+    def test_rejects_task_directory_swapped_to_a_symlink_after_validation(self) -> None:
+        with tempfile.TemporaryDirectory() as outside_directory:
+            outside = Path(outside_directory)
+            task_directory = self.harness_data / "pipeline-state/task-07"
+            task_directory.mkdir(parents=True)
+            open_task_directory = pipeline_state._open_task_directory
+
+            def swap_then_open(state_root_fd: int, task_id: str) -> int:
+                task_directory.rmdir()
+                task_directory.symlink_to(outside, target_is_directory=True)
+                return open_task_directory(state_root_fd, task_id)
+
+            with patch.object(pipeline_state, "_open_task_directory", side_effect=swap_then_open):
+                with self.assertRaises(PipelineStatePathError):
+                    write_pipeline_state("task-07", self._canonical_fields("task-07"), self.harness_data)
+
+            self.assertFalse((outside / "pipeline.md").exists())
+
+    def test_rejects_state_root_swapped_to_a_symlink_after_validation(self) -> None:
+        with tempfile.TemporaryDirectory() as outside_directory:
+            outside = Path(outside_directory)
+            state_root = self.harness_data / "pipeline-state"
+            state_root.mkdir()
+            open_directory = pipeline_state._open_directory
+
+            def swap_then_open(path: Path) -> int:
+                state_root.rmdir()
+                state_root.symlink_to(outside, target_is_directory=True)
+                return open_directory(path)
+
+            with patch.object(pipeline_state, "_open_directory", side_effect=swap_then_open):
+                with self.assertRaises(PipelineStatePathError):
+                    write_pipeline_state("task-07", self._canonical_fields("task-07"), self.harness_data)
+
+            self.assertFalse((outside / "task-07/pipeline.md").exists())
+
     def _write_canonical(self, task_id: str, content: str) -> None:
         path = self.harness_data / "pipeline-state" / task_id / "pipeline.md"
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -178,7 +275,14 @@ class PipelineStateReaderTest(unittest.TestCase):
 
     @staticmethod
     def _canonical_content(task_id: str, empty_field: str = "") -> str:
-        fields = {
+        fields = PipelineStateReaderTest._canonical_fields(task_id)
+        if empty_field:
+            fields[empty_field] = ""
+        return "".join(f"{name}: {value}\n" for name, value in fields.items())
+
+    @staticmethod
+    def _canonical_fields(task_id: str) -> dict[str, str]:
+        return {
             "schema_version": "1",
             "task_id": task_id,
             "repository": "value",
@@ -190,9 +294,6 @@ class PipelineStateReaderTest(unittest.TestCase):
             "updated_at": "value",
             "updated_by": "codex",
         }
-        if empty_field:
-            fields[empty_field] = ""
-        return "".join(f"{name}: {value}\n" for name, value in fields.items())
 
     @staticmethod
     def _legacy_content(task_id: str) -> str:
