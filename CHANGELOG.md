@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com).
 
 ### Added
 
+- Add symlink-safe atomic writes for canonical pipeline state
 - Add managed Python mutation tooling with a 70% score gate for pipeline state
 - Add fail-closed validation for canonical and legacy pipeline state documents
 - Add canonical-first, read-only pipeline state discovery with supported legacy flat-path compatibility
