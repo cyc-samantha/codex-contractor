@@ -73,10 +73,20 @@ def _parse_fields(content: str) -> dict[str, str]:
         if not line.strip() or line.lstrip().startswith("#"):
             continue
         key, separator, value = line.partition(":")
-        if not separator or not key or key != key.strip() or key in fields:
+        if _is_malformed_field(key, separator, value, fields):
             raise PipelineStateValidationError("malformed pipeline state field")
         fields[key] = value.strip()
     return fields
+
+
+def _is_malformed_field(key: str, separator: str, value: str, fields: dict[str, str]) -> bool:
+    return (
+        not separator
+        or not value.startswith(" ")
+        or not key
+        or key != key.strip()
+        or key in fields
+    )
 
 
 def _validate_state(layout: str, fields: dict[str, str], task_id: str) -> None:

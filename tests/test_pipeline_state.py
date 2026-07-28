@@ -131,6 +131,13 @@ class PipelineStateReaderTest(unittest.TestCase):
                 with self.assertRaisesRegex(PipelineStateValidationError, "malformed"):
                     read_pipeline_state("task-06", self.harness_data)
 
+    def test_rejects_pipeline_fields_without_a_space_after_the_delimiter(self) -> None:
+        content = self._canonical_content("task-06").replace(": ", ":")
+        self._write_canonical("task-06", content)
+
+        with self.assertRaisesRegex(PipelineStateValidationError, "malformed"):
+            read_pipeline_state("task-06", self.harness_data)
+
     def test_accepts_comments_and_blank_lines_between_pipeline_fields(self) -> None:
         content = "# synthetic state\n\n" + self._canonical_content("task-06")
         self._write_canonical("task-06", content)
