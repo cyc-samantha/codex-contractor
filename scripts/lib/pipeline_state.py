@@ -130,7 +130,10 @@ def _replace_atomically(task_id: str, content: str, harness_data: Path | None) -
 
 
 def _open_directory(path: Path) -> int:
-    return os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        return os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    except OSError as error:
+        raise PipelineStatePathError(f"unsafe state directory: {path}") from error
 
 
 def _open_task_directory(state_root_fd: int, task_id: str) -> int:

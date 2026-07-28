@@ -250,6 +250,24 @@ class PipelineStateReaderTest(unittest.TestCase):
 
             self.assertFalse((outside / "pipeline.md").exists())
 
+    def test_rejects_state_root_swapped_to_a_symlink_after_validation(self) -> None:
+        with tempfile.TemporaryDirectory() as outside_directory:
+            outside = Path(outside_directory)
+            state_root = self.harness_data / "pipeline-state"
+            state_root.mkdir()
+            open_directory = pipeline_state._open_directory
+
+            def swap_then_open(path: Path) -> int:
+                state_root.rmdir()
+                state_root.symlink_to(outside, target_is_directory=True)
+                return open_directory(path)
+
+            with patch.object(pipeline_state, "_open_directory", side_effect=swap_then_open):
+                with self.assertRaises(PipelineStatePathError):
+                    write_pipeline_state("task-07", self._canonical_fields("task-07"), self.harness_data)
+
+            self.assertFalse((outside / "task-07/pipeline.md").exists())
+
     def _write_canonical(self, task_id: str, content: str) -> None:
         path = self.harness_data / "pipeline-state" / task_id / "pipeline.md"
         path.parent.mkdir(parents=True, exist_ok=True)
