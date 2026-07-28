@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com).
 
 ### Added
 
+- Add fail-closed validation for canonical and legacy pipeline state documents
 - Add canonical-first, read-only pipeline state discovery with supported legacy flat-path compatibility
 - Add fail-closed Small Change compact specifications and approval gating
 - Add deterministic standalone intake routing for Discuss, Small Change, Build, and human-elevated High Risk workflows
