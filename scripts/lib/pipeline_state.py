@@ -5,12 +5,20 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
-from pipeline_state_paths import (
-    PipelineStatePathError,
-    assert_pipeline_path,
-    canonical_pipeline_path,
-    legacy_pipeline_path,
-)
+if __package__:
+    from .pipeline_state_paths import (
+        PipelineStatePathError,
+        assert_pipeline_path,
+        canonical_pipeline_path,
+        legacy_pipeline_path,
+    )
+else:
+    from pipeline_state_paths import (
+        PipelineStatePathError,
+        assert_pipeline_path,
+        canonical_pipeline_path,
+        legacy_pipeline_path,
+    )
 
 
 class PipelineStateNotFound(Exception):

@@ -27,6 +27,23 @@ permissions:
   contents: read
 
 jobs:
+  python-mutation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install Python mutation tooling
+        run: python3 -m pip install -r requirements-dev.txt
+
+      - name: Mutate the pipeline-state reader
+        run: |
+          mutmut run
+          mutmut results --all true | python3 scripts/check-mutation-score.py
+
   hook-tests:
     runs-on: ubuntu-latest
     steps:

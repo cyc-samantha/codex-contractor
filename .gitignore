@@ -10,3 +10,5 @@ pipeline-state/*
 *.local
 __pycache__/
 *.pyc
+.venv/
+mutants/

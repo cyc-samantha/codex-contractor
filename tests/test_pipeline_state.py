@@ -1,24 +1,42 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-sys.path.insert(0, str(Path(__file__).parents[1] / "scripts" / "lib"))
-
-from pipeline_state import (
+from scripts.lib.pipeline_state import (
     PipelineStateNotFound,
     PipelineStatePathError,
     PipelineStateValidationError,
     read_pipeline_state,
 )
-from pipeline_state_paths import canonical_pipeline_path, harness_data_root
+from scripts.lib.pipeline_state_paths import canonical_pipeline_path, harness_data_root
 
 
 class PipelineStatePathsTest(unittest.TestCase):
+    def test_imports_as_a_package_for_mutation_testing(self) -> None:
+        package_result = subprocess.run(
+            [sys.executable, "-c", "import scripts.lib.pipeline_state"],
+            capture_output=True,
+            cwd=Path(__file__).parents[1],
+            text=True,
+        )
+
+        self.assertEqual(package_result.returncode, 0, package_result.stderr)
+        environment = os.environ | {"PYTHONPATH": str(Path(__file__).parents[1] / "scripts" / "lib")}
+        direct_result = subprocess.run(
+            [sys.executable, "-c", "import pipeline_state"],
+            capture_output=True,
+            cwd=Path(__file__).parents[1],
+            env=environment,
+            text=True,
+        )
+        self.assertEqual(direct_result.returncode, 0, direct_result.stderr)
+
     def test_harness_data_environment_selects_runtime_root(self) -> None:
         with patch.dict(os.environ, {"HARNESS_DATA": "/runtime/harness"}):
             self.assertEqual(harness_data_root(), Path("/runtime/harness"))
@@ -29,7 +47,7 @@ class PipelineStatePathsTest(unittest.TestCase):
 
     def test_default_runtime_root_uses_home_claude_directory(self) -> None:
         with patch.dict(os.environ, {}, clear=True), patch(
-            "pipeline_state_paths.Path.home", return_value=Path("/users/codex")
+            "scripts.lib.pipeline_state_paths.Path.home", return_value=Path("/users/codex")
         ):
             self.assertEqual(harness_data_root(), Path("/users/codex/.claude"))
 
