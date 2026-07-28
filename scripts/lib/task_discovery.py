@@ -34,10 +34,10 @@ def discover_repository_tasks(
     repository: Path, harness_data: Path | None = None
 ) -> list[DiscoveredTask]:
     state_root = pipeline_state_root(harness_data)
-    if not state_root.exists():
-        return []
     if state_root.is_symlink():
         raise PipelineStatePathError(f"unsafe pipeline state root: {state_root}")
+    if not state_root.exists():
+        return []
     tasks = _read_task_documents(state_root, harness_data)
     return _matching_active_tasks(tasks, repository)
 

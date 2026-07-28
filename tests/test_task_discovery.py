@@ -75,6 +75,14 @@ class TaskDiscoveryTest(unittest.TestCase):
             with self.assertRaises(PipelineStatePathError):
                 discover_repository_tasks(self.repository, self.harness_data)
 
+    def test_dangling_state_root_symlink_fails_closed(self) -> None:
+        (self.harness_data / "pipeline-state").symlink_to(
+            self.harness_data / "missing-state-root", target_is_directory=True
+        )
+
+        with self.assertRaises(PipelineStatePathError):
+            discover_repository_tasks(self.repository, self.harness_data)
+
     def test_discovery_does_not_modify_existing_state(self) -> None:
         path = self._write_canonical("task-read-only")
         content = path.read_text()
