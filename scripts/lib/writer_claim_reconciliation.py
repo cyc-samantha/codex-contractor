@@ -81,6 +81,7 @@ def registered_worktrees(output: str) -> dict[Path, tuple[str, str]]:
 
 def active_processes(worktree: Path) -> list[int]:
     root = worktree.resolve()
+    worktree_uid = root.stat().st_uid
     if not Path("/proc").is_dir():
         raise ReconciliationError("active process state cannot be evaluated")
     ignored = ancestor_processes()
@@ -95,9 +96,14 @@ def active_processes(worktree: Path) -> list[int]:
         except FileNotFoundError:
             continue
         except PermissionError as error:
+            try:
+                if process.stat().st_uid != worktree_uid:
+                    continue
+            except OSError as owner_error:
+                raise ReconciliationError("active process owner cannot be evaluated") from owner_error
+            raise ReconciliationError("same-owner process cwd cannot be evaluated") from error
+        except OSError as error:
             raise ReconciliationError("active process state cannot be evaluated") from error
-        except OSError:
-            continue
     return active
 
 

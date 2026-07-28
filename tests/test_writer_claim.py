@@ -7,6 +7,7 @@ import os
 import subprocess
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from scripts.lib.writer_claim import (
@@ -16,6 +17,7 @@ from scripts.lib.writer_claim import (
     WriterClaimManager,
 )
 from scripts.lib.pipeline_state import read_pipeline_state, write_pipeline_state
+from scripts.lib.writer_claim_reconciliation import ReconciliationError, active_processes
 
 
 class WriterClaimTest(unittest.TestCase):
@@ -288,6 +290,45 @@ class WriterClaimTest(unittest.TestCase):
         with patch.object(self.manager, "_active_processes", return_value=[123]):
             with self.assertRaises(ClaimRecoveryRequiredError):
                 self.manager.takeover("task-one", self._identity("session-b"), authorization=self._authorization())
+
+    def test_process_scan_ignores_inaccessible_foreign_process(self) -> None:
+        worktree_uid = self.worktree.stat().st_uid
+
+        class InaccessibleCwd:
+            def resolve(self, *, strict: bool):
+                raise PermissionError("foreign process")
+
+        class ForeignProcess:
+            name = "999999"
+
+            def __truediv__(self, name: str):
+                return InaccessibleCwd()
+
+            def stat(self):
+                return SimpleNamespace(st_uid=worktree_uid + 1)
+
+        with patch("scripts.lib.writer_claim_reconciliation.Path.glob", return_value=[ForeignProcess()]):
+            self.assertEqual(active_processes(self.worktree), [])
+
+    def test_process_scan_fails_closed_for_inaccessible_same_owner_process(self) -> None:
+        class InaccessibleCwd:
+            def resolve(self, *, strict: bool):
+                raise PermissionError("same-owner process")
+
+        worktree_uid = self.worktree.stat().st_uid
+
+        class SameOwnerProcess:
+            name = "999998"
+
+            def __truediv__(self, name: str):
+                return InaccessibleCwd()
+
+            def stat(self):
+                return SimpleNamespace(st_uid=worktree_uid)
+
+        with patch("scripts.lib.writer_claim_reconciliation.Path.glob", return_value=[SameOwnerProcess()]):
+            with self.assertRaises(ReconciliationError):
+                active_processes(self.worktree)
 
     def test_release_rejects_symlinked_trajectory_target(self) -> None:
         self.manager.acquire("task-one", self.identity)
