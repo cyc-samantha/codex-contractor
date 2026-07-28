@@ -33,9 +33,12 @@ class WriterClaimTest(unittest.TestCase):
         self._git("add", "README")
         self._git("commit", "-m", "initial")
         self.manager = WriterClaimManager(self.harness_data)
+        self.process_scan = patch.object(self.manager, "_active_processes", return_value=[])
+        self.process_scan.start()
         self.identity = self._identity("session-a")
 
     def tearDown(self) -> None:
+        self.process_scan.stop()
         self.temporary_directory.cleanup()
 
     def test_different_tasks_acquire_independently(self) -> None:

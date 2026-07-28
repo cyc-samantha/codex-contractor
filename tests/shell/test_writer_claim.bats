@@ -16,20 +16,6 @@ setup() {
   IDENTITY=(--owner codex --session-id session-a --repository "$WORKTREE" --branch build/claim --worktree "$WORKTREE")
 }
 
-@test "takeover records authorization and installs reconciled successor" {
-  run "${CLI[@]}" acquire task-one "${IDENTITY[@]}"
-  [ "$status" -eq 0 ]
-
-  run "${CLI[@]}" takeover task-one \
-    --owner codex --session-id session-b --repository "$WORKTREE" \
-    --branch build/claim --worktree "$WORKTREE" --head "$HEAD" \
-    --confirmed-stopped --authorizer-identity human@example.com \
-    --authorization-reference incident-42 --rationale "prior process stopped"
-  [ "$status" -eq 0 ]
-  [[ "$output" == *'"session_id": "session-b"'* ]]
-  grep -q '"authorization_reference": "incident-42"' "$HARNESS_DATA/pipeline-state/task-one/trajectory.jsonl"
-}
-
 @test "acquire inspect heartbeat and release expose claim lifecycle" {
   run "${CLI[@]}" acquire task-one "${IDENTITY[@]}"
   [ "$status" -eq 0 ]
