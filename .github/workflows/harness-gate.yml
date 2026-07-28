@@ -23,6 +23,7 @@ on:
       - "pyproject.toml"
       - "requirements-dev.txt"
       - "tests/test_pipeline_state.py"
+      - "tests/test_task_discovery.py"
       - "AGENTS.md"
   workflow_dispatch: {}
 
