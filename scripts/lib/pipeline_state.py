@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import os
 from pathlib import Path
-import tempfile
+from uuid import uuid4
 
 if __package__:
     from .pipeline_state_paths import (
@@ -13,6 +13,7 @@ if __package__:
         assert_pipeline_path,
         canonical_pipeline_path,
         legacy_pipeline_path,
+        pipeline_state_root,
     )
 else:
     from pipeline_state_paths import (
@@ -20,6 +21,7 @@ else:
         assert_pipeline_path,
         canonical_pipeline_path,
         legacy_pipeline_path,
+        pipeline_state_root,
     )
 
 
@@ -84,8 +86,7 @@ def write_pipeline_state(
     content = _serialize_fields(fields)
     _validate_state("canonical", fields, task_id)
     assert_pipeline_path(path, harness_data)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    _replace_atomically(path, content)
+    _replace_atomically(task_id, content, harness_data)
     return PipelineStateDocument("canonical", path, content, fields)
 
 
@@ -114,20 +115,50 @@ def _contains_only_string_fields(fields: dict[str, str]) -> bool:
     return all(isinstance(key, str) and isinstance(value, str) for key, value in fields.items())
 
 
-def _replace_atomically(path: Path, content: str) -> None:
-    temporary_path = _write_temporary_file(path.parent, content)
+def _replace_atomically(task_id: str, content: str, harness_data: Path | None) -> None:
+    state_root = pipeline_state_root(harness_data)
+    state_root.mkdir(parents=True, exist_ok=True)
+    state_root_fd = _open_directory(state_root)
     try:
-        os.replace(temporary_path, path)
+        task_fd = _open_task_directory(state_root_fd, task_id)
+        try:
+            _replace_in_directory(task_fd, content)
+        finally:
+            os.close(task_fd)
     finally:
-        Path(temporary_path).unlink(missing_ok=True)
+        os.close(state_root_fd)
 
 
-def _write_temporary_file(directory: Path, content: str) -> str:
-    with tempfile.NamedTemporaryFile(
-        mode="w", encoding="utf-8", dir=directory, prefix=".pipeline.", delete=False
-    ) as temporary_file:
-        temporary_file.write(content)
-        return temporary_file.name
+def _open_directory(path: Path) -> int:
+    return os.open(path, os.O_RDONLY | os.O_DIRECTORY)
+
+
+def _open_task_directory(state_root_fd: int, task_id: str) -> int:
+    try:
+        os.mkdir(task_id, dir_fd=state_root_fd)
+    except FileExistsError:
+        pass
+    try:
+        return os.open(task_id, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=state_root_fd)
+    except OSError as error:
+        raise PipelineStatePathError(f"unsafe task directory: {task_id}") from error
+
+
+def _replace_in_directory(directory_fd: int, content: str) -> None:
+    temporary_name = f".pipeline.{uuid4().hex}"
+    temporary_fd = os.open(temporary_name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600, dir_fd=directory_fd)
+    try:
+        with os.fdopen(temporary_fd, "w", encoding="utf-8") as temporary_file:
+            temporary_file.write(content)
+            temporary_file.flush()
+            os.fsync(temporary_file.fileno())
+        os.replace(temporary_name, "pipeline.md", src_dir_fd=directory_fd, dst_dir_fd=directory_fd)
+        os.fsync(directory_fd)
+    finally:
+        try:
+            os.unlink(temporary_name, dir_fd=directory_fd)
+        except FileNotFoundError:
+            pass
 
 
 def _is_malformed_field(key: str, separator: str, value: str, fields: dict[str, str]) -> bool:

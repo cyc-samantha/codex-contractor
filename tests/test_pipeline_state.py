@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+import scripts.lib.pipeline_state as pipeline_state
 from scripts.lib.pipeline_state import (
     PipelineStateNotFound,
     PipelineStatePathError,
@@ -230,6 +231,24 @@ class PipelineStateReaderTest(unittest.TestCase):
 
             with self.assertRaises(PipelineStatePathError):
                 write_pipeline_state("task-07", self._canonical_fields("task-07"), self.harness_data)
+
+    def test_rejects_task_directory_swapped_to_a_symlink_after_validation(self) -> None:
+        with tempfile.TemporaryDirectory() as outside_directory:
+            outside = Path(outside_directory)
+            task_directory = self.harness_data / "pipeline-state/task-07"
+            task_directory.mkdir(parents=True)
+            open_task_directory = pipeline_state._open_task_directory
+
+            def swap_then_open(state_root_fd: int, task_id: str) -> int:
+                task_directory.rmdir()
+                task_directory.symlink_to(outside, target_is_directory=True)
+                return open_task_directory(state_root_fd, task_id)
+
+            with patch.object(pipeline_state, "_open_task_directory", side_effect=swap_then_open):
+                with self.assertRaises(PipelineStatePathError):
+                    write_pipeline_state("task-07", self._canonical_fields("task-07"), self.harness_data)
+
+            self.assertFalse((outside / "pipeline.md").exists())
 
     def _write_canonical(self, task_id: str, content: str) -> None:
         path = self.harness_data / "pipeline-state" / task_id / "pipeline.md"
