@@ -21,11 +21,18 @@ class TaskSelection:
 
 
 def select_task(tasks: list[DiscoveredTask], choice: str | None) -> TaskSelection:
+    _require_unique_task_ids(tasks)
     if choice == "new":
         return TaskSelection("new", None)
-    if not choice:
+    if not choice or not choice.startswith("resume:"):
         raise TaskSelectionError("explicit task selection is required")
-    return TaskSelection("resume", _selected_task(tasks, choice))
+    return TaskSelection("resume", _selected_task(tasks, choice.removeprefix("resume:")))
+
+
+def _require_unique_task_ids(tasks: list[DiscoveredTask]) -> None:
+    task_ids = [task.task_id for task in tasks]
+    if len(task_ids) != len(set(task_ids)):
+        raise TaskSelectionError("discovered task identities are ambiguous")
 
 
 def _selected_task(tasks: list[DiscoveredTask], task_id: str) -> DiscoveredTask:
