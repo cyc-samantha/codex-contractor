@@ -226,9 +226,10 @@ Rules:
 5. Heartbeats occur at phase checkpoints; no daemon is required.
 6. A stale-looking claim never authorizes automatic takeover.
 7. Takeover requires explicit confirmation that the prior writer stopped,
+   an auditable human identity, authorization reference, and rationale,
    followed by Git, worktree, HEAD, evidence, and process reconciliation.
 8. Takeover archives the displaced record in `trajectory.jsonl`, creates a
-   unique successor `session_id`, and atomically installs the replacement.
+   unique successor `session_id`, and transactionally installs the replacement.
 9. A displaced session cannot heartbeat or release the successor claim
    because its identity comparison fails.
 10. Intentional pause, handoff, terminal failure, or completed PR handoff

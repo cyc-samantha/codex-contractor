@@ -12,30 +12,51 @@ setup() {
   [ "$status" -eq 0 ]
 }
 
-@test "limits mutmut to pipeline-state modules and their tests" {
+@test "limits mutmut to protected Python modules and their tests" {
   run python3 -c '
 import tomllib
 from pathlib import Path
 
 config = tomllib.loads(Path("pyproject.toml").read_text())["tool"]["mutmut"]
 assert config["source_paths"] == ["scripts/lib"]
-assert config["only_mutate"] == ["scripts/lib/pipeline_state.py", "scripts/lib/task_discovery.py", "scripts/lib/task_selection.py"]
-assert config["pytest_add_cli_args_test_selection"] == ["tests/test_pipeline_state.py", "tests/test_task_discovery.py", "tests/test_task_selection.py"]
+assert config["only_mutate"] == ["scripts/lib/pipeline_state.py", "scripts/lib/task_discovery.py", "scripts/lib/task_selection.py", "scripts/lib/writer_claim.py", "scripts/lib/writer_claim_io.py", "scripts/lib/writer_claim_reconciliation.py"]
+assert config["pytest_add_cli_args_test_selection"] == ["tests/test_pipeline_state.py", "tests/test_task_discovery.py", "tests/test_task_selection.py", "tests/test_writer_claim.py"]
 '
 
   [ "$status" -eq 0 ]
 }
 
-@test "CI installs the shared dev requirements before running mutmut" {
-  run grep -F "pip install -r requirements-dev.txt" "$REPO_ROOT/.github/workflows/harness-gate.yml"
+@test "CI validates TOML and runs pytest through uv without mutmut" {
+  run grep -F "astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b" "$REPO_ROOT/.github/workflows/harness-gate.yml"
+  [ "$status" -eq 0 ]
+
+  run grep -F 'version: "0.12.0"' "$REPO_ROOT/.github/workflows/harness-gate.yml"
+  [ "$status" -eq 0 ]
+
+  run grep -F "uv pip install -r requirements-dev.txt" "$REPO_ROOT/.github/workflows/harness-gate.yml"
+  [ "$status" -eq 0 ]
+
+  run grep -F "tomllib.load" "$REPO_ROOT/.github/workflows/harness-gate.yml"
+  [ "$status" -eq 0 ]
+
+  run grep -F ".venv/bin/python -m pytest tests" "$REPO_ROOT/.github/workflows/harness-gate.yml"
+  [ "$status" -eq 0 ]
+
+  run grep -F "bats tests/shell/" "$REPO_ROOT/.github/workflows/harness-gate.yml"
   [ "$status" -eq 0 ]
 
   run grep -F "mutmut run" "$REPO_ROOT/.github/workflows/harness-gate.yml"
-  [ "$status" -eq 0 ]
+  [ "$status" -ne 0 ]
+
+  run grep -F "mutmut results" "$REPO_ROOT/.github/workflows/harness-gate.yml"
+  [ "$status" -ne 0 ]
+
+  run grep -F "scripts/check-mutation-score.py" "$REPO_ROOT/.github/workflows/harness-gate.yml"
+  [ "$status" -ne 0 ]
 }
 
 @test "PR filtering protects mutation tooling and its Python test suite" {
-  paths=(pyproject.toml requirements-dev.txt "scripts/**" tests/test_pipeline_state.py tests/test_task_discovery.py tests/test_task_selection.py)
+  paths=(pyproject.toml requirements-dev.txt "scripts/**" tests/test_pipeline_state.py tests/test_task_discovery.py tests/test_task_selection.py tests/test_writer_claim.py)
   for path in "${paths[@]}"; do
     run grep -F -- "- \"$path\"" "$REPO_ROOT/.github/workflows/harness-gate.yml"
     [ "$status" -eq 0 ]

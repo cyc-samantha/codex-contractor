@@ -1,8 +1,7 @@
 name: harness-gate
 
-# CX-54 — CI-Green merge gate. Runs the enforcement-hook test suite on any PR
-# that touches the enforcement surface. Dependency-light: ubuntu-latest + bats
-# (from apt) + jq + git, no language toolchain.
+# CX-54 — CI-Green merge gate. Runs Python and enforcement-hook tests on any PR
+# that touches the enforcement surface.
 
 # Push trigger is deliberately UNFILTERED (no `paths:`) — a path-filtered
 # push would silently skip runs on main commits that touch only
@@ -21,10 +20,12 @@ on:
       - ".github/workflows/harness-gate.yml"
       - "scripts/**"
       - "pyproject.toml"
+      - "justfile"
       - "requirements-dev.txt"
       - "tests/test_pipeline_state.py"
       - "tests/test_task_discovery.py"
       - "tests/test_task_selection.py"
+      - "tests/test_writer_claim.py"
       - "AGENTS.md"
   workflow_dispatch: {}
 
@@ -32,22 +33,27 @@ permissions:
   contents: read
 
 jobs:
-  python-mutation:
+  python-tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - uses: actions/setup-python@v5
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
           python-version: "3.14"
+          version: "0.12.0"
 
-      - name: Install Python mutation tooling
-        run: python3 -m pip install -r requirements-dev.txt
-
-      - name: Mutate the pipeline-state reader
+      - name: Install Python test tooling
         run: |
-          mutmut run
-          mutmut results --all true | python3 scripts/check-mutation-score.py
+          uv venv --python 3.14
+          uv pip install -r requirements-dev.txt
+
+      - name: Validate project TOML
+        run: uv run python -c "import tomllib; tomllib.load(open('pyproject.toml', 'rb'))"
+
+      - name: Run Python test suite
+        run: .venv/bin/python -m pytest tests
 
   hook-tests:
     runs-on: ubuntu-latest

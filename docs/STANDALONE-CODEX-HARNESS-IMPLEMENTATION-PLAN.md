@@ -367,6 +367,8 @@ Enforce one active writer per task while allowing parallel tasks.
 ```text
 scripts/lib/writer_claim.py
 scripts/lib/writer_claim_cli.py
+scripts/lib/writer_claim_io.py
+scripts/lib/writer_claim_reconciliation.py
 tests/test_writer_claim.py
 tests/shell/test_writer_claim.bats
 ```
@@ -677,7 +679,10 @@ Finish migration without deleting historical runtime state.
 ## 14. PR-Sized Task Sequence
 
 The slices above are capability groups, not implementation task boundaries.
-Implement them through the following focused PRs.
+Implement them through cohesive, independently verifiable delivery bundles.
+A bundle may cover adjacent task rows only when they share one bounded contract,
+one rollback surface, and one complete acceptance-test suite; task rows remain
+traceability checkpoints, not mandatory PR boundaries.
 
 ### T18B task card: native Codex LLM-mutant adapter
 
@@ -775,9 +780,9 @@ quality gate or weakening its fail-closed behavior.
 | T07 | Complete | Write canonical pipeline state atomically | T06 |
 | T08 | Complete | Discover repository-matching tasks read-only | T07 |
 | T09 | Complete | Add human-confirmed new-task and resume selection | T08 |
-| T10 | Planned | Acquire one atomic writer claim per task | T07 |
-| T11 | Planned | Add identity-safe claim heartbeat and release | T10 |
-| T12 | Planned | Add human-confirmed claim takeover and trajectory archive | T11 |
+| T10 | In review (T10–T12 cohesive bundle) | Acquire one atomic writer claim per task | T07 |
+| T11 | In review in T10–T12 bundle | Add identity-safe claim heartbeat and release | T10 |
+| T12 | In review in T10–T12 bundle | Add human-confirmed claim takeover and trajectory archive | T11 |
 | T13 | Planned | Define versioned role dispatch contracts with stable engineer and reviewer instance identities | T09, T11 |
 | T13A | Planned | Enforce the orchestrator protected-write boundary and coordination-artifact allowlist | T13 |
 | T13B | Planned | Emit the shared minimal envelope, aggregate task/run known totals plus unknown fields, and reconcile late PR identity | T13 |
@@ -806,7 +811,7 @@ quality gate or weakening its fail-closed behavior.
 | T32 | Planned | Remove final fallback identity and declare standalone behavior active | T12, T21, T23, T24, T27, T30, T31 |
 | T33 | Planned | Publish the first evidence-based token/learning/model-effort evaluation | T24, evaluation sample met |
 
-Each task gets its own:
+Each delivery bundle gets its own:
 
 - task ID and canonical `pipeline.md`;
 - compact or full approved plan;
