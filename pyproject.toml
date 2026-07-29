@@ -1,4 +1,4 @@
 [tool.mutmut]
 source_paths = ["scripts/lib"]
-only_mutate = ["scripts/lib/pipeline_state.py", "scripts/lib/task_discovery.py", "scripts/lib/task_selection.py", "scripts/lib/writer_claim.py", "scripts/lib/writer_claim_io.py", "scripts/lib/writer_claim_reconciliation.py"]
-pytest_add_cli_args_test_selection = ["tests/test_pipeline_state.py", "tests/test_task_discovery.py", "tests/test_task_selection.py", "tests/test_writer_claim.py"]
+only_mutate = ["scripts/lib/dispatch_contract.py", "scripts/lib/pipeline_state.py", "scripts/lib/task_discovery.py", "scripts/lib/task_selection.py", "scripts/lib/writer_claim.py", "scripts/lib/writer_claim_io.py", "scripts/lib/writer_claim_reconciliation.py"]
+pytest_add_cli_args_test_selection = ["tests/test_dispatch_contract.py", "tests/test_pipeline_state.py", "tests/test_task_discovery.py", "tests/test_task_selection.py", "tests/test_writer_claim.py"]

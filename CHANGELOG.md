@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com).
 
 ### Added
 
+- Add strict versioned dispatch contracts and least-privilege Codex Agent profiles for the five standalone workflow roles
 - Add explicit human decisions for resuming or starting pipeline tasks
 - Add read-only discovery of repository-matching active pipeline tasks
 - Add symlink-safe atomic writes for canonical pipeline state

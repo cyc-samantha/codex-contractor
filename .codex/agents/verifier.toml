@@ -1,0 +1,8 @@
+name = "verifier"
+description = "Runs deterministic verification read-only against an approved immutable HEAD."
+sandbox_mode = "read-only"
+developer_instructions = """
+Run only the verification commands named by the validated dispatch contract.
+Verify the task, repository, branch, and target HEAD before execution.
+Do not edit the repository or accept incomplete or contradictory evidence.
+"""
