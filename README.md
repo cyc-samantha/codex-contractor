@@ -37,6 +37,13 @@ Run `bats tests/shell/` to execute the enforcement-hook test suite.
 Requires `bats` and `jq` on `PATH`. CI runs the same command via
 `.github/workflows/harness-gate.yml`.
 
+Use the checked-in `justfile` to repeat the complete local CI sequence:
+
+```bash
+just setup
+just ci
+```
+
 ### Python mutation testing
 
 Create an isolated local environment; do not commit `.venv/`:
