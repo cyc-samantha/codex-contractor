@@ -26,12 +26,27 @@ assert config["pytest_add_cli_args_test_selection"] == ["tests/test_pipeline_sta
   [ "$status" -eq 0 ]
 }
 
-@test "CI installs the shared dev requirements before running mutmut" {
-  run grep -F "pip install -r requirements-dev.txt" "$REPO_ROOT/.github/workflows/harness-gate.yml"
+@test "CI validates TOML and runs pytest through uv without mutmut" {
+  run grep -F "astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b" "$REPO_ROOT/.github/workflows/harness-gate.yml"
+  [ "$status" -eq 0 ]
+
+  run grep -F 'version: "0.12.0"' "$REPO_ROOT/.github/workflows/harness-gate.yml"
+  [ "$status" -eq 0 ]
+
+  run grep -F "uv pip install -r requirements-dev.txt" "$REPO_ROOT/.github/workflows/harness-gate.yml"
+  [ "$status" -eq 0 ]
+
+  run grep -F "tomllib.load" "$REPO_ROOT/.github/workflows/harness-gate.yml"
+  [ "$status" -eq 0 ]
+
+  run grep -F ".venv/bin/python -m pytest tests" "$REPO_ROOT/.github/workflows/harness-gate.yml"
+  [ "$status" -eq 0 ]
+
+  run grep -F "bats tests/shell/" "$REPO_ROOT/.github/workflows/harness-gate.yml"
   [ "$status" -eq 0 ]
 
   run grep -F "mutmut run" "$REPO_ROOT/.github/workflows/harness-gate.yml"
-  [ "$status" -eq 0 ]
+  [ "$status" -ne 0 ]
 }
 
 @test "PR filtering protects mutation tooling and its Python test suite" {
