@@ -216,6 +216,7 @@ def test_rejects_paths_that_are_both_allowed_and_prohibited() -> None:
     [
         ("scripts//lib/dispatch_contract.py", "scripts/lib/dispatch_contract.py"),
         ("scripts/lib/dispatch_contract.py", "scripts/**"),
+        ("scripts/file.py", "scripts/**/*.py"),
         ("scripts/**/*.py", "scripts/lib/**"),
     ],
 )

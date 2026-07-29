@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from fnmatch import fnmatchcase
 from pathlib import Path, PurePosixPath
 import re
 from typing import Any
@@ -255,9 +254,9 @@ def _scope_entries_overlap(first: str, second: str) -> bool:
     if first_pattern and second_pattern:
         return _patterns_may_overlap(first, second)
     if first_pattern:
-        return fnmatchcase(second, first)
+        return PurePosixPath(second).full_match(first)
     if second_pattern:
-        return fnmatchcase(first, second)
+        return PurePosixPath(first).full_match(second)
     return first == second
 
 
