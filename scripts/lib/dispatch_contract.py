@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from fnmatch import fnmatchcase
 from pathlib import Path, PurePosixPath
 import re
 from typing import Any
@@ -11,55 +12,30 @@ from typing import Any
 class DispatchContractError(ValueError):
     """Raised when a dispatch contract cannot be trusted."""
 
-
-ROLES = frozenset(
-    {
-        "orchestrator",
-        "software_engineer",
-        "code_reviewer",
-        "security_reviewer",
-        "verifier",
-    }
-)
+ROLES = frozenset({
+    "orchestrator", "software_engineer", "code_reviewer",
+    "security_reviewer", "verifier",
+})
 READ_ONLY_ROLES = frozenset({"code_reviewer", "security_reviewer", "verifier"})
 RISKS = frozenset({"Small Change", "Build", "High Risk"})
 EFFORTS = frozenset({"low", "medium", "high", "xhigh", "max", "ultra"})
 WRITE_AUTHORITY = {
     "orchestrator": "coordination_only",
     "software_engineer": "task_scope",
-    "code_reviewer": "none",
-    "security_reviewer": "none",
-    "verifier": "none",
+    "code_reviewer": "none", "security_reviewer": "none", "verifier": "none",
 }
 FILESYSTEM_PERMISSION = {
-    "orchestrator": "read-only",
-    "software_engineer": "workspace-write",
-    "code_reviewer": "read-only",
-    "security_reviewer": "read-only",
+    "orchestrator": "read-only", "software_engineer": "workspace-write",
+    "code_reviewer": "read-only", "security_reviewer": "read-only",
     "verifier": "read-only",
 }
 CONTRACT_FIELDS = frozenset(
     {
-        "schema_version",
-        "dispatch_id",
-        "task_id",
-        "repository",
-        "branch",
-        "worktree",
-        "base_head",
-        "target_head",
-        "allowed_paths",
-        "prohibited_paths",
-        "acceptance_criteria",
-        "required_tests",
-        "risk",
-        "role",
-        "role_instance_id",
-        "session_id",
-        "requested_model",
-        "requested_reasoning_effort",
-        "write_authority",
-        "permissions",
+        "schema_version", "dispatch_id", "task_id", "repository", "branch",
+        "worktree", "base_head", "target_head", "allowed_paths",
+        "prohibited_paths", "acceptance_criteria", "required_tests", "risk",
+        "role", "role_instance_id", "session_id", "requested_model",
+        "requested_reasoning_effort", "write_authority", "permissions",
     }
 )
 PERMISSION_FIELDS = frozenset({"filesystem", "network", "tools"})
@@ -72,7 +48,6 @@ class DispatchPermissions:
     filesystem: str
     network: str
     tools: str
-
 
 @dataclass(frozen=True)
 class DispatchContract:
@@ -130,7 +105,8 @@ def _build_contract(fields: dict[str, Any], role: str) -> DispatchContract:
 def _validated_scalars(fields: dict[str, Any]) -> dict[str, Any]:
     values = {name: _require_text(fields[name], name) for name in _TEXT_FIELDS}
     values.update({name: _require_identifier(fields[name], name) for name in _IDENTIFIER_FIELDS})
-    values.update({name: _require_sequence(fields[name], name) for name in _SEQUENCE_FIELDS})
+    values.update({name: _require_sequence(fields[name], name) for name in _TEXT_SEQUENCE_FIELDS})
+    values.update({name: _require_scope_paths(fields[name], name) for name in _SCOPE_FIELDS})
     values["repository"] = _require_absolute_path(fields["repository"], "repository")
     values["worktree"] = _require_absolute_path(fields["worktree"], "worktree")
     values["base_head"] = _require_head(fields["base_head"], "base_head")
@@ -162,6 +138,11 @@ def _parse_permissions(value: object) -> DispatchPermissions:
 def _validate_role_invariants(contract: DispatchContract) -> None:
     if not contract.role_instance_id.startswith(f"{contract.role}-"):
         raise DispatchContractError("role_instance_id must be bound to role")
+    bound_session = f"session-{contract.role_instance_id}"
+    session_matches = contract.session_id in {bound_session}
+    session_matches |= contract.session_id.startswith(f"{bound_session}-")
+    if not session_matches:
+        raise DispatchContractError("session_id must be bound to role_instance_id")
     if contract.write_authority != WRITE_AUTHORITY[contract.role]:
         _raise_authority_error(contract.role)
     expected_filesystem = FILESYSTEM_PERMISSION[contract.role]
@@ -253,8 +234,51 @@ def _validate_relative_paths(paths: tuple[str, ...], name: str) -> None:
 
 
 def _reject_path_overlap(allowed: tuple[str, ...], prohibited: tuple[str, ...]) -> None:
-    if set(allowed) & set(prohibited):
-        raise DispatchContractError("allowed_paths and prohibited_paths overlap")
+    for allowed_path in allowed:
+        for prohibited_path in prohibited:
+            if _scope_entries_overlap(allowed_path, prohibited_path):
+                raise DispatchContractError("allowed_paths and prohibited_paths overlap")
+
+
+def _require_scope_paths(value: object, name: str) -> tuple[str, ...]:
+    paths = _require_sequence(value, name)
+    _validate_relative_paths(paths, name)
+    canonical = tuple(str(PurePosixPath(path)) for path in paths)
+    if len(canonical) != len(set(canonical)):
+        raise DispatchContractError(f"{name} contains canonical duplicates")
+    return canonical
+
+
+def _scope_entries_overlap(first: str, second: str) -> bool:
+    first_pattern = _is_pattern(first)
+    second_pattern = _is_pattern(second)
+    if first_pattern and second_pattern:
+        return _patterns_may_overlap(first, second)
+    if first_pattern:
+        return fnmatchcase(second, first)
+    if second_pattern:
+        return fnmatchcase(first, second)
+    return first == second
+
+
+def _is_pattern(value: str) -> bool:
+    return any(character in value for character in "*?[")
+
+
+def _patterns_may_overlap(first: str, second: str) -> bool:
+    first_prefix = _static_prefix(first)
+    second_prefix = _static_prefix(second)
+    shared_length = min(len(first_prefix), len(second_prefix))
+    return first_prefix[:shared_length] == second_prefix[:shared_length]
+
+
+def _static_prefix(pattern: str) -> tuple[str, ...]:
+    parts: list[str] = []
+    for part in PurePosixPath(pattern).parts:
+        if _is_pattern(part):
+            break
+        parts.append(part)
+    return tuple(parts)
 
 
 _TEXT_FIELDS = (
@@ -263,9 +287,12 @@ _TEXT_FIELDS = (
     "write_authority",
 )
 _IDENTIFIER_FIELDS = ("dispatch_id", "task_id", "role_instance_id", "session_id")
-_SEQUENCE_FIELDS = (
-    "allowed_paths",
-    "prohibited_paths",
+_TEXT_SEQUENCE_FIELDS = (
     "acceptance_criteria",
     "required_tests",
 )
+_SCOPE_FIELDS = (
+    "allowed_paths",
+    "prohibited_paths",
+)
+_SEQUENCE_FIELDS = _TEXT_SEQUENCE_FIELDS + _SCOPE_FIELDS

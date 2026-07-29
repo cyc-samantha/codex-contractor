@@ -111,6 +111,11 @@ def test_binds_stable_role_and_session_identity() -> None:
     with pytest.raises(DispatchContractError, match="session_id"):
         parse_dispatch_contract(value)
 
+    value = contract_for("code_reviewer")
+    value["session_id"] = "session-software_engineer-01"
+    with pytest.raises(DispatchContractError, match="session_id"):
+        parse_dispatch_contract(value)
+
 
 def test_binds_scope_git_risk_execution_and_verification() -> None:
     parsed = parse_dispatch_contract(contract_for("software_engineer"))
@@ -201,6 +206,25 @@ def test_rejects_non_stable_identifiers(field: str, value: str) -> None:
 def test_rejects_paths_that_are_both_allowed_and_prohibited() -> None:
     contract = contract_for("software_engineer")
     contract["prohibited_paths"] = ["scripts/lib/dispatch_contract.py"]
+
+    with pytest.raises(DispatchContractError, match="overlap"):
+        parse_dispatch_contract(contract)
+
+
+@pytest.mark.parametrize(
+    ("allowed", "prohibited"),
+    [
+        ("scripts//lib/dispatch_contract.py", "scripts/lib/dispatch_contract.py"),
+        ("scripts/lib/dispatch_contract.py", "scripts/**"),
+        ("scripts/**/*.py", "scripts/lib/**"),
+    ],
+)
+def test_rejects_canonical_or_pattern_scope_overlap(
+    allowed: str, prohibited: str
+) -> None:
+    contract = contract_for("software_engineer")
+    contract["allowed_paths"] = [allowed]
+    contract["prohibited_paths"] = [prohibited]
 
     with pytest.raises(DispatchContractError, match="overlap"):
         parse_dispatch_contract(contract)
