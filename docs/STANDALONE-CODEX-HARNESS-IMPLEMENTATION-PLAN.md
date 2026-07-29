@@ -780,10 +780,10 @@ quality gate or weakening its fail-closed behavior.
 | T07 | Complete | Write canonical pipeline state atomically | T06 |
 | T08 | Complete | Discover repository-matching tasks read-only | T07 |
 | T09 | Complete | Add human-confirmed new-task and resume selection | T08 |
-| T10 | In review (T10–T12 cohesive bundle) | Acquire one atomic writer claim per task | T07 |
-| T11 | In review in T10–T12 bundle | Add identity-safe claim heartbeat and release | T10 |
-| T12 | In review in T10–T12 bundle | Add human-confirmed claim takeover and trajectory archive | T11 |
-| T13 | Planned | Define versioned role dispatch contracts with stable engineer and reviewer instance identities | T09, T11 |
+| T10 | Complete | Acquire one atomic writer claim per task | T07 |
+| T11 | Complete | Add identity-safe claim heartbeat and release | T10 |
+| T12 | Complete | Add human-confirmed claim takeover and trajectory archive | T11 |
+| T13 | In review | Define versioned role dispatch contracts with stable engineer and reviewer instance identities | T09, T11 |
 | T13A | Planned | Enforce the orchestrator protected-write boundary and coordination-artifact allowlist | T13 |
 | T13B | Planned | Emit the shared minimal envelope, aggregate task/run known totals plus unknown fields, and reconcile late PR identity | T13 |
 | T13C | Planned | Add deterministic work-type model-effort allocation and fail-closed fallback handling | T13, T13B |

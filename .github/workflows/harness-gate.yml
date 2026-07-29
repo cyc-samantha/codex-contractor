@@ -22,6 +22,7 @@ on:
       - "pyproject.toml"
       - "justfile"
       - "requirements-dev.txt"
+      - "tests/test_dispatch_contract.py"
       - "tests/test_pipeline_state.py"
       - "tests/test_task_discovery.py"
       - "tests/test_task_selection.py"

@@ -56,9 +56,9 @@ mutmut run
 mutmut results --all true | python3 scripts/check-mutation-score.py
 ```
 
-The checked-in mutmut configuration limits mutation testing to
-`scripts/lib/pipeline_state.py` and its unit tests. The score check enforces
-the required 70% killed-mutant threshold; use `mutmut results` to inspect any
+The checked-in mutmut configuration limits mutation testing to the protected
+Python runtime modules and their unit tests. The score check enforces the
+required 70% killed-mutant threshold; use `mutmut results` to inspect any
 surviving mutants.
 
 ## Layout
