@@ -17,10 +17,28 @@ setup() {
   run grep -Fx "shell-test:" "$REPO_ROOT/justfile"
   [ "$status" -eq 0 ]
 
-  run grep -Fx "ci: setup toml-check python-test shell-test" "$REPO_ROOT/justfile"
+  run grep -Fx "hooks-json:" "$REPO_ROOT/justfile"
+  [ "$status" -eq 0 ]
+
+  run grep -Fx "shell-lint:" "$REPO_ROOT/justfile"
+  [ "$status" -eq 0 ]
+
+  run grep -Fx "ci: setup toml-check python-test hooks-json shell-lint shell-test" "$REPO_ROOT/justfile"
   [ "$status" -eq 0 ]
 
   run grep -F "uv venv --python 3.14 --allow-existing" "$REPO_ROOT/justfile"
+  [ "$status" -eq 0 ]
+
+  run grep -F "jq -e . .codex/hooks/hooks.json" "$REPO_ROOT/justfile"
+  [ "$status" -eq 0 ]
+
+  run grep -F "shellcheck --severity=error" "$REPO_ROOT/justfile"
+  [ "$status" -eq 0 ]
+}
+
+@test "pull requests run CI when the justfile changes" {
+  run grep -F -- '- "justfile"' "$REPO_ROOT/.github/workflows/harness-gate.yml"
+
   [ "$status" -eq 0 ]
 }
 

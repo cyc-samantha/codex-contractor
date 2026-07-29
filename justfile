@@ -13,7 +13,13 @@ toml-check:
 python-test:
     .venv/bin/python -m pytest tests
 
+hooks-json:
+    jq -e . .codex/hooks/hooks.json > /dev/null
+
+shell-lint:
+    shellcheck --severity=error .codex/hooks/*.sh .codex/hooks/_lib/*.sh scripts/*.sh
+
 shell-test:
     bats tests/shell/
 
-ci: setup toml-check python-test shell-test
+ci: setup toml-check python-test hooks-json shell-lint shell-test
