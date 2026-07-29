@@ -47,6 +47,12 @@ assert config["pytest_add_cli_args_test_selection"] == ["tests/test_pipeline_sta
 
   run grep -F "mutmut run" "$REPO_ROOT/.github/workflows/harness-gate.yml"
   [ "$status" -ne 0 ]
+
+  run grep -F "mutmut results" "$REPO_ROOT/.github/workflows/harness-gate.yml"
+  [ "$status" -ne 0 ]
+
+  run grep -F "scripts/check-mutation-score.py" "$REPO_ROOT/.github/workflows/harness-gate.yml"
+  [ "$status" -ne 0 ]
 }
 
 @test "PR filtering protects mutation tooling and its Python test suite" {
