@@ -12,6 +12,11 @@ from scripts.lib.execution_policy import (
     ProfileKey,
     resolve_execution_profile,
 )
+from scripts.lib.orchestrator_write_boundary import (
+    ActivationCapability,
+    OrchestratorWriteBoundary,
+    OrchestratorWriteBoundaryError,
+)
 from scripts.lib.spawn_telemetry import (
     SpawnEnvelope,
     SpawnTelemetryError,
@@ -22,9 +27,6 @@ from scripts.lib.spawn_telemetry import (
 
 class SoftwareEngineerDispatchError(RuntimeError):
     """Raised when Software Engineer dispatch cannot pass its gates."""
-
-
-T13A_PROTECTED_WRITE_BOUNDARY_ACTIVE = False
 
 
 @dataclass(frozen=True)
@@ -65,8 +67,10 @@ def dispatch_software_engineer(
     runtime: RuntimePort,
     available_profiles: set[ProfileKey],
     authorized_fallbacks: Mapping[ProfileKey, ProfileKey],
+    boundary: OrchestratorWriteBoundary | None,
+    activation: ActivationCapability | None,
 ) -> DispatchExecution:
-    _require_activation(contract)
+    _require_activation(contract, run_id, boundary, activation)
     profile = _resolve_profile(
         contract, work_type, available_profiles, authorized_fallbacks
     )
@@ -81,11 +85,22 @@ def dispatch_software_engineer(
     return execution
 
 
-def _require_activation(contract: DispatchContract) -> None:
+def _require_activation(
+    contract: DispatchContract,
+    run_id: str,
+    boundary: OrchestratorWriteBoundary | None,
+    activation: ActivationCapability | None,
+) -> None:
     if contract.role != "software_engineer":
         raise SoftwareEngineerDispatchError("dispatch role must be software_engineer")
-    if not T13A_PROTECTED_WRITE_BOUNDARY_ACTIVE:
+    if boundary is None or activation is None:
         raise SoftwareEngineerDispatchError("T13A protected-write prerequisite is inactive")
+    try:
+        boundary.require_active(activation, contract.task_id, run_id)
+    except OrchestratorWriteBoundaryError as error:
+        raise SoftwareEngineerDispatchError(
+            f"T13A protected-write prerequisite failed: {error}"
+        ) from error
 
 
 def _resolve_profile(

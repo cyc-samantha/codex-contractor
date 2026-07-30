@@ -24,6 +24,7 @@ on:
       - "requirements-dev.txt"
       - "tests/test_dispatch_contract.py"
       - "tests/test_execution_policy.py"
+      - "tests/test_orchestrator_write_boundary.py"
       - "tests/test_pipeline_state.py"
       - "tests/test_software_engineer_dispatch.py"
       - "tests/test_spawn_telemetry.py"

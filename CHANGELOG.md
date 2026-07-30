@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com).
 
 ### Added
 
+- Add an orchestrator protected-write boundary whose Software Engineer dispatch capability is issued only after a correlated telemetry canary and activation record are durably read back
 - Add an inactive telemetry-gated Software Engineer dispatch facade with deterministic execution profiles and durable spawn accounting, pending the T13A activation prerequisite
 - Add strict versioned dispatch contracts and least-privilege Codex Agent profiles for the five standalone workflow roles
 - Add explicit human decisions for resuming or starting pipeline tasks
