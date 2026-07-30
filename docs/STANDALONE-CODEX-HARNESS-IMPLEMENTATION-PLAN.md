@@ -684,6 +684,35 @@ A bundle may cover adjacent task rows only when they share one bounded contract,
 one rollback surface, and one complete acceptance-test suite; task rows remain
 traceability checkpoints, not mandatory PR boundaries.
 
+### T13B-T13D task card: telemetry-gated Software Engineer dispatch
+
+Deliver the shared minimal spawn envelope, deterministic execution-profile
+allocation, and Software Engineer dispatch as one bounded vertical slice. The
+single acceptance boundary is:
+
+```text
+validated dispatch contract
+-> deterministic requested and actual execution profile
+-> Software Engineer runtime result
+-> durably persisted correlated telemetry envelope
+-> accepted result
+```
+
+The bundle must fail closed before accepting the runtime result when the
+execution profile is unavailable or unapproved, requested and actual profiles
+contradict the dispatch contract, provider token metrics are neither actual
+values nor explicit null-with-reason values, or the correlated telemetry event
+cannot be read back after durable persistence. It aggregates known task/run
+token totals while preserving every unknown field and reconciles a late PR
+identity without rewriting raw spawn events.
+
+T13A remains the activation prerequisite. The dispatch facade may merge before
+T13A only while activation is mechanically disabled; no caller may activate
+Software Engineer dispatch until the orchestrator protected-write boundary and
+coordination-artifact allowlist are proven active. The combined bundle has one
+rollback surface: disable or remove the dispatch facade while retaining
+append-only raw telemetry.
+
 ### T18B task card: native Codex LLM-mutant adapter
 
 Replace the verification workflow's Claude-specific Tier 3.5 call with one
@@ -720,7 +749,7 @@ The implementation must:
 - emit the shared minimal spawn telemetry envelope, including requested and
   actual model and reasoning effort, tokens or null-with-reason, duration, and
   retry-cycle identity;
-- keep activation disabled until T13B and T13C have merged and the adapter's
+- keep activation disabled until T13B-T13D has merged and the adapter's
   telemetry contract tests pass; activation additionally requires a runtime
   canary proving that the correlated telemetry event was durably persisted
   before the adapter result can be accepted.
@@ -739,7 +768,7 @@ Acceptance criteria:
    substituted diffs, and malformed mutant output fail closed.
 5. Unavailable execution records `SKIP` with an explicit reason rather than
    fabricating mutants or token values.
-6. Activation remains mechanically disabled before the T13B/T13C rollout
+6. Activation remains mechanically disabled before the T13B-T13D rollout
    prerequisites and the correlated runtime telemetry canary are satisfied.
 
 Candidate files:
@@ -783,22 +812,20 @@ quality gate or weakening its fail-closed behavior.
 | T10 | Complete | Acquire one atomic writer claim per task | T07 |
 | T11 | Complete | Add identity-safe claim heartbeat and release | T10 |
 | T12 | Complete | Add human-confirmed claim takeover and trajectory archive | T11 |
-| T13 | In review | Define versioned role dispatch contracts with stable engineer and reviewer instance identities | T09, T11 |
+| T13 | Complete | Define versioned role dispatch contracts with stable engineer and reviewer instance identities | T09, T11 |
 | T13A | Planned | Enforce the orchestrator protected-write boundary and coordination-artifact allowlist | T13 |
-| T13B | Planned | Emit the shared minimal envelope, aggregate task/run known totals plus unknown fields, and reconcile late PR identity | T13 |
-| T13C | Planned | Add deterministic work-type model-effort allocation and fail-closed fallback handling | T13, T13B |
-| T13D | Planned | Dispatch the Software Engineer only after its shared envelope proves actual provider tokens or null-with-reason | T13A, T13B, T13C |
-| T14 | Planned | Add fresh read-only code review bound to task and HEAD with required shared-envelope coverage | T13D, T13B |
-| T15 | Planned | Return findings to the bound engineer and targeted re-review to the bound raising reviewer, with shared-envelope coverage for each spawn | T14, T13B |
+| T13B-T13D | In review | Emit and aggregate the shared minimal envelope, resolve deterministic model-effort allocation with fail-closed fallback, and dispatch the Software Engineer only after correlated telemetry is durably proven; T13A activation prerequisite | T13 |
+| T14 | Planned | Add fresh read-only code review bound to task and HEAD with required shared-envelope coverage | T13B-T13D, T13A |
+| T15 | Planned | Return findings to the bound engineer and targeted re-review to the bound raising reviewer, with shared-envelope coverage for each spawn | T14, T13B-T13D |
 | T16 | Planned | Add automatic High Risk triggers and human-authorized downgrade enforcement | T04 |
-| T17 | Planned | Add security-first review, re-review, sign-off, invalidation, and required shared-envelope coverage | T13B, T15, T16 |
+| T17 | Planned | Add security-first review, re-review, sign-off, invalidation, and required shared-envelope coverage | T13B-T13D, T15, T16 |
 | T18 | Planned | Write verification evidence bound to reviewed HEAD | T15 |
-| T18A | Planned | Dispatch the deterministic verifier read-only only after its shared envelope proves actual provider tokens or null-with-reason | T13B, T13C, T18 |
-| T18B | Planned | Replace the Claude-specific Tier 3.5 call with a fresh read-only Codex LLM-mutant adapter, activated only after telemetry gates pass | T13B, T13C, T18 |
+| T18A | Planned | Dispatch the deterministic verifier read-only only after its shared envelope proves actual provider tokens or null-with-reason | T13B-T13D, T18 |
+| T18B | Planned | Replace the Claude-specific Tier 3.5 call with a fresh read-only Codex LLM-mutant adapter, activated only after telemetry gates pass | T13B-T13D, T18 |
 | T19 | Planned | Derive and run task-appropriate final verification commands | T18A |
 | T20 | Planned | Add one-attempt PR state and existing-PR reconciliation | T19 |
 | T21 | Planned | Attempt PR creation once and preserve manual handoff on failure | T20 |
-| T22 | Planned | Enrich reconciled telemetry with verdict, findings, retries, learning attribution, and quality breakdowns by role/effort | T13B, T13D |
+| T22 | Planned | Enrich reconciled telemetry with verdict, findings, retries, learning attribution, and quality breakdowns by role/effort | T13B-T13D |
 | T23 | Planned | Append observations automatically without promoting instincts | T22 |
 | T24 | Planned | Add the token/learning/model-effort evaluation framework and report template over enriched PR aggregates | T22, T23 |
 | T25 | Planned | Reuse shared evidence types in Builder-Guardian | T17, T19 |

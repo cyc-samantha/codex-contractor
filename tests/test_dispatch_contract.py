@@ -164,7 +164,9 @@ def test_implementation_plan_records_bundle_progress() -> None:
     assert "| T10 | Complete |" in plan
     assert "| T11 | Complete |" in plan
     assert "| T12 | Complete |" in plan
-    assert "| T13 | In review |" in plan
+    assert "| T13 | Complete |" in plan
+    assert "| T13B-T13D | In review |" in plan
+    assert "T13A activation prerequisite" in plan
 
 
 def test_rejects_duplicate_scope_entries() -> None:
