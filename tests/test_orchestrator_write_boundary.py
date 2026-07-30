@@ -30,22 +30,23 @@ def canary(task_id: str = "task-01", run_id: str = "run-01") -> SpawnEnvelope:
 
 
 @pytest.mark.parametrize(
-    ("kind", "name"),
+    ("kind", "name", "relative"),
     [
-        ("coordination", None),
-        ("dispatch", "dispatch-01"),
-        ("pr", None),
-        ("observation", None),
+        ("coordination", None, "pipeline-state/task-01/coordination.json"),
+        ("dispatch", "dispatch-01", "pipeline-state/task-01/dispatch/dispatch-01.json"),
+        ("pr", None, "pipeline-state/task-01/pr.json"),
+        ("observation", None, "learning/observations/task-01.jsonl"),
     ],
 )
 def test_allows_each_enumerated_coordination_artifact(
-    tmp_path: Path, kind: str, name: str | None,
+    tmp_path: Path, kind: str, name: str | None, relative: str,
 ) -> None:
     boundary = OrchestratorWriteBoundary(tmp_path)
 
     path = boundary.write_artifact(kind, "task-01", {"ok": True}, name)
 
-    assert path.is_file()
+    assert path == tmp_path / relative
+    assert path.read_text() == '{"ok": true}\n'
 
 
 @pytest.mark.parametrize("kind", ["source", "test", "migration", "repo_config"])
@@ -95,6 +96,19 @@ def test_activation_requires_durable_correlated_canary(tmp_path: Path) -> None:
     boundary.telemetry_store().record(canary())
     capability = boundary.activate(canary())
     require_activation(capability, "task-01", "run-01")
+    record = tmp_path / "pipeline-state" / "task-01" / "activation.json"
+    assert record.read_text() == (
+        '{"allowlist_digest": '
+        '"21c07d1a7607ff10840b8e1186a8235c3d7efeba063cccf4554b97bd69b2ea93", '
+        '"event_id": "canary-01", "run_id": "run-01", '
+        '"schema_version": 1, "task_id": "task-01"}\n'
+    )
+
+
+def test_telemetry_store_uses_canonical_harness_location(tmp_path: Path) -> None:
+    store = OrchestratorWriteBoundary(tmp_path).telemetry_store()
+
+    assert store.events_path == tmp_path / "telemetry" / "spawn-events.jsonl"
 
 
 def test_activation_rejects_wrong_task_run_or_event(tmp_path: Path) -> None:
