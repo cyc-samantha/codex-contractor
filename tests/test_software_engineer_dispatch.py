@@ -7,8 +7,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).parents[1]))
 
-import scripts.lib.software_engineer_dispatch as dispatch_module  # noqa: E402
 from scripts.lib.dispatch_contract import parse_dispatch_contract  # noqa: E402
+from scripts.lib.orchestrator_write_boundary import OrchestratorWriteBoundary  # noqa: E402
 from scripts.lib.software_engineer_dispatch import (  # noqa: E402
     DispatchBinding,
     DispatchExecution,
@@ -64,13 +64,31 @@ def execution(binding: DispatchBinding, **overrides: object) -> DispatchExecutio
     return DispatchExecution(**values)
 
 
+def activation(tmp_path: Path):
+    envelope = dispatch_module_canary()
+    boundary = OrchestratorWriteBoundary(tmp_path / "state")
+    boundary.telemetry_store().record(envelope)
+    return boundary.activate(envelope)
+
+
+def dispatch_module_canary():
+    from scripts.lib.spawn_telemetry import SpawnEnvelope
+
+    return SpawnEnvelope(
+        1, "canary-01", contract().task_id, "run-01",
+        "t13a-activation-canary", "orchestrator", "orchestrator-canary",
+        "session-t13a-canary", None,
+        "gpt-5.6-sol", "gpt-5.6-sol", "medium", "medium",
+        TokenMetric(1, None), TokenMetric(0, None), TokenMetric(1, None), 1,
+        "canary",
+    )
+
+
 def test_accepts_result_only_after_correlated_telemetry_is_durable(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     store = SpawnTelemetryStore(tmp_path / "spawn-events.jsonl")
-    monkeypatch.setattr(
-        dispatch_module, "T13A_PROTECTED_WRITE_BOUNDARY_ACTIVE", True
-    )
+    capability = activation(tmp_path)
 
     result = dispatch_software_engineer(
         contract(),
@@ -82,6 +100,7 @@ def test_accepts_result_only_after_correlated_telemetry_is_durable(
         lambda _contract, _profile, binding: execution(binding),
         {("gpt-5.6-terra", "high")},
         {},
+        capability,
     )
 
     assert result.payload == {"status": "complete"}
@@ -89,13 +108,9 @@ def test_accepts_result_only_after_correlated_telemetry_is_durable(
     assert store.read_events()[0].event_id == "telemetry-01"
 
 
-def test_rejects_missing_or_mismatched_telemetry(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_rejects_missing_or_mismatched_telemetry(tmp_path: Path) -> None:
     store = SpawnTelemetryStore(tmp_path / "spawn-events.jsonl")
-    monkeypatch.setattr(
-        dispatch_module, "T13A_PROTECTED_WRITE_BOUNDARY_ACTIVE", True
-    )
+    capability = activation(tmp_path)
 
     with pytest.raises(SoftwareEngineerDispatchError, match="telemetry"):
         dispatch_software_engineer(
@@ -110,18 +125,15 @@ def test_rejects_missing_or_mismatched_telemetry(
             ),
             {("gpt-5.6-terra", "high")},
             {},
+            capability,
         )
 
     assert store.read_events() == ()
 
 
-def test_rejects_unavailable_execution_profile(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_rejects_unavailable_execution_profile(tmp_path: Path) -> None:
     invoked = False
-    monkeypatch.setattr(
-        dispatch_module, "T13A_PROTECTED_WRITE_BOUNDARY_ACTIVE", True
-    )
+    capability = activation(tmp_path)
 
     def runtime(_contract, _profile, _binding):
         nonlocal invoked
@@ -139,6 +151,7 @@ def test_rejects_unavailable_execution_profile(
             runtime,
             set(),
             {},
+            capability,
         )
 
     assert invoked is False
@@ -156,15 +169,30 @@ def test_activation_remains_disabled_until_t13a(tmp_path: Path) -> None:
             lambda _contract, _profile, binding: execution(binding),
             {("gpt-5.6-terra", "high")},
             {},
+            None,
         )
 
 
-def test_rejects_runtime_result_with_substituted_binding(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        dispatch_module, "T13A_PROTECTED_WRITE_BOUNDARY_ACTIVE", True
-    )
+def test_caller_boolean_cannot_activate_dispatch(tmp_path: Path) -> None:
+    invoked = False
+
+    def runtime(_contract, _profile, binding):
+        nonlocal invoked
+        invoked = True
+        return execution(binding)
+
+    with pytest.raises(SoftwareEngineerDispatchError, match="capability"):
+        dispatch_software_engineer(
+            contract(), "run-01", "telemetry-01", "initial", "general",
+            SpawnTelemetryStore(tmp_path / "spawn-events.jsonl"), runtime,
+            {("gpt-5.6-terra", "high")}, {}, True,
+        )
+
+    assert invoked is False
+
+
+def test_rejects_runtime_result_with_substituted_binding(tmp_path: Path) -> None:
+    capability = activation(tmp_path)
 
     def runtime(_contract, _profile, binding):
         substituted = DispatchBinding(
@@ -189,4 +217,5 @@ def test_rejects_runtime_result_with_substituted_binding(
             runtime,
             {("gpt-5.6-terra", "high")},
             {},
+            capability,
         )
