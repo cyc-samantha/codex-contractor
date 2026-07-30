@@ -65,22 +65,19 @@ def execution(binding: DispatchBinding, **overrides: object) -> DispatchExecutio
 
 
 def activation(tmp_path: Path):
-    telemetry = SpawnTelemetryStore(tmp_path / "canary-events.jsonl")
     envelope = dispatch_module_canary()
-    telemetry.record(envelope)
     boundary = OrchestratorWriteBoundary(tmp_path / "state")
-    capability = boundary.activate(
-        envelope.task_id, envelope.run_id, envelope.event_id, telemetry
-    )
-    return boundary, capability
+    boundary.telemetry_store().record(envelope)
+    return boundary.activate(envelope)
 
 
 def dispatch_module_canary():
     from scripts.lib.spawn_telemetry import SpawnEnvelope
 
     return SpawnEnvelope(
-        1, "canary-01", contract().task_id, "run-01", "canary-dispatch",
-        "orchestrator", "orchestrator-01", "session-orchestrator-01", None,
+        1, "canary-01", contract().task_id, "run-01",
+        "t13a-activation-canary", "orchestrator", "orchestrator-canary",
+        "session-t13a-canary", None,
         "gpt-5.6-sol", "gpt-5.6-sol", "medium", "medium",
         TokenMetric(1, None), TokenMetric(0, None), TokenMetric(1, None), 1,
         "canary",
@@ -91,7 +88,7 @@ def test_accepts_result_only_after_correlated_telemetry_is_durable(
     tmp_path: Path,
 ) -> None:
     store = SpawnTelemetryStore(tmp_path / "spawn-events.jsonl")
-    boundary, capability = activation(tmp_path)
+    capability = activation(tmp_path)
 
     result = dispatch_software_engineer(
         contract(),
@@ -103,7 +100,6 @@ def test_accepts_result_only_after_correlated_telemetry_is_durable(
         lambda _contract, _profile, binding: execution(binding),
         {("gpt-5.6-terra", "high")},
         {},
-        boundary,
         capability,
     )
 
@@ -114,7 +110,7 @@ def test_accepts_result_only_after_correlated_telemetry_is_durable(
 
 def test_rejects_missing_or_mismatched_telemetry(tmp_path: Path) -> None:
     store = SpawnTelemetryStore(tmp_path / "spawn-events.jsonl")
-    boundary, capability = activation(tmp_path)
+    capability = activation(tmp_path)
 
     with pytest.raises(SoftwareEngineerDispatchError, match="telemetry"):
         dispatch_software_engineer(
@@ -129,7 +125,6 @@ def test_rejects_missing_or_mismatched_telemetry(tmp_path: Path) -> None:
             ),
             {("gpt-5.6-terra", "high")},
             {},
-            boundary,
             capability,
         )
 
@@ -138,7 +133,7 @@ def test_rejects_missing_or_mismatched_telemetry(tmp_path: Path) -> None:
 
 def test_rejects_unavailable_execution_profile(tmp_path: Path) -> None:
     invoked = False
-    boundary, capability = activation(tmp_path)
+    capability = activation(tmp_path)
 
     def runtime(_contract, _profile, _binding):
         nonlocal invoked
@@ -156,7 +151,6 @@ def test_rejects_unavailable_execution_profile(tmp_path: Path) -> None:
             runtime,
             set(),
             {},
-            boundary,
             capability,
         )
 
@@ -176,12 +170,29 @@ def test_activation_remains_disabled_until_t13a(tmp_path: Path) -> None:
             {("gpt-5.6-terra", "high")},
             {},
             None,
-            None,
         )
 
 
+def test_caller_boolean_cannot_activate_dispatch(tmp_path: Path) -> None:
+    invoked = False
+
+    def runtime(_contract, _profile, binding):
+        nonlocal invoked
+        invoked = True
+        return execution(binding)
+
+    with pytest.raises(SoftwareEngineerDispatchError, match="capability"):
+        dispatch_software_engineer(
+            contract(), "run-01", "telemetry-01", "initial", "general",
+            SpawnTelemetryStore(tmp_path / "spawn-events.jsonl"), runtime,
+            {("gpt-5.6-terra", "high")}, {}, True,
+        )
+
+    assert invoked is False
+
+
 def test_rejects_runtime_result_with_substituted_binding(tmp_path: Path) -> None:
-    boundary, capability = activation(tmp_path)
+    capability = activation(tmp_path)
 
     def runtime(_contract, _profile, binding):
         substituted = DispatchBinding(
@@ -206,6 +217,5 @@ def test_rejects_runtime_result_with_substituted_binding(tmp_path: Path) -> None
             runtime,
             {("gpt-5.6-terra", "high")},
             {},
-            boundary,
             capability,
         )

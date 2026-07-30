@@ -8,9 +8,11 @@ import json
 import os
 from pathlib import Path
 import re
+from weakref import WeakKeyDictionary
 
-from scripts.lib.spawn_telemetry import SpawnTelemetryStore
+from scripts.lib.spawn_telemetry import SpawnEnvelope, SpawnTelemetryStore
 from scripts.lib.writer_claim_io import (
+    append_json_line,
     open_harness_data,
     open_optional_regular,
     read_json,
@@ -32,6 +34,13 @@ _ARTIFACTS = {
 _ALLOWLIST_DIGEST = hashlib.sha256(
     json.dumps(_ARTIFACTS, sort_keys=True).encode()
 ).hexdigest()
+_CANARY_IDENTITY = (
+    "t13a-activation-canary",
+    "orchestrator",
+    "orchestrator-canary",
+    "session-t13a-canary",
+)
+_CANARY_PROFILE = ("gpt-5.6-sol", "medium")
 
 
 @dataclass(frozen=True)
@@ -45,9 +54,15 @@ class _ActivationBinding:
 class ActivationCapability:
     """Opaque capability issued only after durable canary verification."""
 
-    def __init__(self, binding: _ActivationBinding, issuer: object) -> None:
-        self._binding = binding
-        self._issuer = issuer
+    __slots__ = ("__weakref__",)
+
+    def __new__(cls) -> ActivationCapability:
+        raise TypeError("activation capabilities are boundary-issued only")
+
+
+_ISSUED: WeakKeyDictionary[ActivationCapability, _ActivationBinding] = (
+    WeakKeyDictionary()
+)
 
 
 class OrchestratorWriteBoundary:
@@ -57,7 +72,11 @@ class OrchestratorWriteBoundary:
                 "HARNESS_DATA must be absolute and normalized"
             )
         self._root = harness_data
-        self._issuer = object()
+
+    def telemetry_store(self) -> SpawnTelemetryStore:
+        return SpawnTelemetryStore(
+            self._root / "telemetry" / "spawn-events.jsonl"
+        )
 
     def write_artifact(
         self,
@@ -68,7 +87,23 @@ class OrchestratorWriteBoundary:
     ) -> Path:
         task = _identifier(task_id)
         components, filename = _artifact_location(kind, task, name)
+        if kind == "observation":
+            return self._append_observation(components, filename, value)
         return self._write_file(components, filename, value)
+
+    def _append_observation(
+        self,
+        components: tuple[str, ...],
+        filename: str,
+        value: dict[str, object],
+    ) -> Path:
+        path = self._root.joinpath(*components)
+        directory = _open_directory(path)
+        try:
+            append_json_line(directory, filename, value)
+        finally:
+            os.close(directory)
+        return path / filename
 
     def _write_file(
         self,
@@ -93,13 +128,12 @@ class OrchestratorWriteBoundary:
 
     def activate(
         self,
-        task_id: str,
-        run_id: str,
-        event_id: str,
-        telemetry: SpawnTelemetryStore,
+        canary: SpawnEnvelope,
     ) -> ActivationCapability:
-        binding = _activation_binding(task_id, run_id, event_id)
-        _require_canary(binding, telemetry)
+        binding = _activation_binding(
+            canary.task_id, canary.run_id, canary.event_id
+        )
+        _require_canary(canary, self.telemetry_store())
         record = _activation_record(binding)
         path = self._write_file(
             ("pipeline-state", binding.task_id), "activation.json", record
@@ -108,26 +142,9 @@ class OrchestratorWriteBoundary:
             raise OrchestratorWriteBoundaryError(
                 "activation record was not durably persisted"
             )
-        return ActivationCapability(binding, self._issuer)
-
-    def require_active(
-        self,
-        capability: object,
-        task_id: str,
-        run_id: str,
-    ) -> None:
-        if not isinstance(capability, ActivationCapability):
-            raise OrchestratorWriteBoundaryError("activation capability required")
-        if capability._issuer is not self._issuer:
-            raise OrchestratorWriteBoundaryError("activation capability issuer mismatch")
-        expected = (_identifier(task_id), _identifier(run_id), _ALLOWLIST_DIGEST)
-        actual = (
-            capability._binding.task_id,
-            capability._binding.run_id,
-            capability._binding.allowlist_digest,
-        )
-        if actual != expected:
-            raise OrchestratorWriteBoundaryError("activation binding mismatch")
+        capability = object.__new__(ActivationCapability)
+        _ISSUED[capability] = binding
+        return capability
 
 
 def _artifact_location(
@@ -142,7 +159,7 @@ def _artifact_location(
     if kind == "dispatch":
         artifact_name = _identifier(name)
         return ("pipeline-state", task_id, "dispatch"), f"{artifact_name}.json"
-    return ("learning", "observations"), f"{task_id}.json"
+    return ("learning", "observations"), f"{task_id}.jsonl"
 
 
 def _identifier(value: object) -> str:
@@ -190,17 +207,37 @@ def _activation_binding(
 
 
 def _require_canary(
-    binding: _ActivationBinding, telemetry: SpawnTelemetryStore
+    expected: SpawnEnvelope, telemetry: SpawnTelemetryStore
 ) -> None:
     matches = tuple(
         event for event in telemetry.read_events()
-        if (event.task_id, event.run_id, event.event_id)
-        == (binding.task_id, binding.run_id, binding.event_id)
+        if event.event_id == expected.event_id
     )
-    if len(matches) != 1:
+    if (
+        len(matches) != 1
+        or matches[0] != expected
+        or not _valid_canary(expected)
+    ):
         raise OrchestratorWriteBoundaryError(
             "durable correlated telemetry canary required"
         )
+
+
+def _valid_canary(event: SpawnEnvelope) -> bool:
+    identity = (
+        event.dispatch_id,
+        event.role,
+        event.role_instance_id,
+        event.session_id,
+    )
+    requested = (event.requested_model, event.requested_reasoning_effort)
+    actual = (event.actual_model, event.actual_reasoning_effort)
+    return (
+        identity == _CANARY_IDENTITY
+        and requested == _CANARY_PROFILE
+        and actual == _CANARY_PROFILE
+        and event.retry_cycle_id == "canary"
+    )
 
 
 def _activation_record(binding: _ActivationBinding) -> dict[str, object]:
@@ -219,3 +256,17 @@ def _read_record(path: Path) -> dict[str, object]:
         return read_json(directory, path.name)
     finally:
         os.close(directory)
+
+
+def require_activation(
+    capability: object, task_id: str, run_id: str
+) -> None:
+    if not isinstance(capability, ActivationCapability):
+        raise OrchestratorWriteBoundaryError("activation capability required")
+    binding = _ISSUED.get(capability)
+    if binding is None:
+        raise OrchestratorWriteBoundaryError("activation capability was not issued")
+    expected = (_identifier(task_id), _identifier(run_id), _ALLOWLIST_DIGEST)
+    actual = (binding.task_id, binding.run_id, binding.allowlist_digest)
+    if actual != expected:
+        raise OrchestratorWriteBoundaryError("activation binding mismatch")

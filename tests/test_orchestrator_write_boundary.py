@@ -8,8 +8,10 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parents[1]))
 
 from scripts.lib.orchestrator_write_boundary import (  # noqa: E402
+    ActivationCapability,
     OrchestratorWriteBoundary,
     OrchestratorWriteBoundaryError,
+    require_activation,
 )
 from scripts.lib.spawn_telemetry import (  # noqa: E402
     SpawnEnvelope,
@@ -20,8 +22,8 @@ from scripts.lib.spawn_telemetry import (  # noqa: E402
 
 def canary(task_id: str = "task-01", run_id: str = "run-01") -> SpawnEnvelope:
     return SpawnEnvelope(
-        1, "canary-01", task_id, run_id, "dispatch-01", "orchestrator",
-        "orchestrator-01", "session-orchestrator-01", None, "gpt-5.6-sol",
+        1, "canary-01", task_id, run_id, "t13a-activation-canary", "orchestrator",
+        "orchestrator-canary", "session-t13a-canary", None, "gpt-5.6-sol",
         "gpt-5.6-sol", "medium", "medium", TokenMetric(1, None),
         TokenMetric(0, None), TokenMetric(1, None), 1, "canary",
     )
@@ -85,40 +87,56 @@ def test_rejects_hard_link_target(tmp_path: Path) -> None:
 
 
 def test_activation_requires_durable_correlated_canary(tmp_path: Path) -> None:
-    store = SpawnTelemetryStore(tmp_path / "spawn-events.jsonl")
     boundary = OrchestratorWriteBoundary(tmp_path)
 
     with pytest.raises(OrchestratorWriteBoundaryError, match="canary"):
-        boundary.activate("task-01", "run-01", "canary-01", store)
+        boundary.activate(canary())
 
-    store.record(canary())
-    capability = boundary.activate("task-01", "run-01", "canary-01", store)
-    boundary.require_active(capability, "task-01", "run-01")
+    boundary.telemetry_store().record(canary())
+    capability = boundary.activate(canary())
+    require_activation(capability, "task-01", "run-01")
 
 
 def test_activation_rejects_wrong_task_run_or_event(tmp_path: Path) -> None:
-    store = SpawnTelemetryStore(tmp_path / "spawn-events.jsonl")
-    store.record(canary())
     boundary = OrchestratorWriteBoundary(tmp_path)
+    boundary.telemetry_store().record(canary())
 
-    for binding in (
-        ("other-task", "run-01", "canary-01"),
-        ("task-01", "other-run", "canary-01"),
-        ("task-01", "run-01", "other-event"),
+    for envelope in (
+        canary(task_id="other-task"),
+        canary(run_id="other-run"),
+        SpawnEnvelope(**{**canary().__dict__, "event_id": "other-event"}),
     ):
         with pytest.raises(OrchestratorWriteBoundaryError, match="canary"):
-            boundary.activate(*binding, store)
+            boundary.activate(envelope)
+
+
+def test_activation_rejects_noncanonical_canary_profile(tmp_path: Path) -> None:
+    boundary = OrchestratorWriteBoundary(tmp_path)
+    value = canary()
+    forged = SpawnEnvelope(
+        **{**value.__dict__, "actual_reasoning_effort": "low"}
+    )
+    boundary.telemetry_store().record(forged)
+
+    with pytest.raises(OrchestratorWriteBoundaryError, match="canary"):
+        boundary.activate(forged)
 
 
 def test_forged_or_mismatched_capability_is_rejected(tmp_path: Path) -> None:
-    store = SpawnTelemetryStore(tmp_path / "spawn-events.jsonl")
-    store.record(canary())
-    first = OrchestratorWriteBoundary(tmp_path)
-    capability = first.activate("task-01", "run-01", "canary-01", store)
+    boundary = OrchestratorWriteBoundary(tmp_path)
+    boundary.telemetry_store().record(canary())
+    capability = boundary.activate(canary())
 
-    with pytest.raises(OrchestratorWriteBoundaryError, match="capability"):
-        OrchestratorWriteBoundary(tmp_path).require_active(
-            capability, "task-01", "run-01"
-        )
+    with pytest.raises(TypeError, match="boundary-issued"):
+        ActivationCapability()
     with pytest.raises(OrchestratorWriteBoundaryError, match="binding"):
-        first.require_active(capability, "task-01", "other-run")
+        require_activation(capability, "task-01", "other-run")
+
+
+def test_observations_are_append_only_jsonl(tmp_path: Path) -> None:
+    boundary = OrchestratorWriteBoundary(tmp_path)
+    path = boundary.write_artifact("observation", "task-01", {"sequence": 1})
+    boundary.write_artifact("observation", "task-01", {"sequence": 2})
+
+    assert path.suffix == ".jsonl"
+    assert path.read_text().count("\n") == 2

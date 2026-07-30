@@ -14,8 +14,8 @@ from scripts.lib.execution_policy import (
 )
 from scripts.lib.orchestrator_write_boundary import (
     ActivationCapability,
-    OrchestratorWriteBoundary,
     OrchestratorWriteBoundaryError,
+    require_activation,
 )
 from scripts.lib.spawn_telemetry import (
     SpawnEnvelope,
@@ -67,10 +67,9 @@ def dispatch_software_engineer(
     runtime: RuntimePort,
     available_profiles: set[ProfileKey],
     authorized_fallbacks: Mapping[ProfileKey, ProfileKey],
-    boundary: OrchestratorWriteBoundary | None,
     activation: ActivationCapability | None,
 ) -> DispatchExecution:
-    _require_activation(contract, run_id, boundary, activation)
+    _require_activation(contract, run_id, activation)
     profile = _resolve_profile(
         contract, work_type, available_profiles, authorized_fallbacks
     )
@@ -88,15 +87,14 @@ def dispatch_software_engineer(
 def _require_activation(
     contract: DispatchContract,
     run_id: str,
-    boundary: OrchestratorWriteBoundary | None,
     activation: ActivationCapability | None,
 ) -> None:
     if contract.role != "software_engineer":
         raise SoftwareEngineerDispatchError("dispatch role must be software_engineer")
-    if boundary is None or activation is None:
+    if activation is None:
         raise SoftwareEngineerDispatchError("T13A protected-write prerequisite is inactive")
     try:
-        boundary.require_active(activation, contract.task_id, run_id)
+        require_activation(activation, contract.task_id, run_id)
     except OrchestratorWriteBoundaryError as error:
         raise SoftwareEngineerDispatchError(
             f"T13A protected-write prerequisite failed: {error}"
