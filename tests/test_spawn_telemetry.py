@@ -171,10 +171,13 @@ def test_concurrent_pr_reconciliation_is_single_and_idempotent(
     assert len(store.read_reconciliations()) == 1
 
 
-def test_rejects_unknown_reconciliation_schema_version(tmp_path: Path) -> None:
+@pytest.mark.parametrize("schema_version", [2, True])
+def test_rejects_unknown_reconciliation_schema_version(
+    tmp_path: Path, schema_version: object
+) -> None:
     path = tmp_path / "pr-reconciliations.jsonl"
     record = {
-        "schema_version": 2,
+        "schema_version": schema_version,
         "task_id": "t13b-t13d-dispatch",
         "run_id": "run-01",
         "pr_id": "32",

@@ -1,7 +1,5 @@
 """Validate, persist, aggregate, and reconcile spawn telemetry."""
-
 from __future__ import annotations
-
 from dataclasses import asdict, dataclass
 from contextlib import contextmanager
 import fcntl
@@ -11,17 +9,14 @@ from pathlib import Path
 import re
 import stat
 from typing import Any, Iterable
-
 from scripts.lib.writer_claim_io import (
     append_json_line,
     open_harness_data,
     open_optional_regular,
 )
 
-
 class SpawnTelemetryError(ValueError):
     """Raised when spawn telemetry is incomplete or contradictory."""
-
 
 IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 TOKEN_FIELDS = ("input_tokens", "cached_input_tokens", "output_tokens")
@@ -35,12 +30,10 @@ ENVELOPE_FIELDS = frozenset(
     }
 )
 
-
 @dataclass(frozen=True)
 class TokenMetric:
     value: int | None
     unavailable_reason: str | None
-
 
 @dataclass(frozen=True)
 class SpawnEnvelope:
@@ -63,12 +56,10 @@ class SpawnEnvelope:
     duration_ms: int
     retry_cycle_id: str
 
-
 @dataclass(frozen=True)
 class SpawnUsageAggregate:
     known_token_total: int
     unknown_token_fields: tuple[str, ...]
-
 
 @dataclass(frozen=True)
 class PrReconciliation:
@@ -78,7 +69,6 @@ class PrReconciliation:
     pr_id: str
     known_token_total: int
     unknown_token_fields: tuple[str, ...]
-
 
 def parse_spawn_envelope(value: object) -> SpawnEnvelope:
     fields = _mapping(value, "spawn envelope")
@@ -112,7 +102,6 @@ def parse_spawn_envelope(value: object) -> SpawnEnvelope:
         retry_cycle_id=_identifier(fields["retry_cycle_id"], "retry_cycle_id"),
     )
 
-
 def aggregate_spawn_usage(events: Iterable[SpawnEnvelope]) -> SpawnUsageAggregate:
     total = 0
     unknown: list[str] = []
@@ -124,7 +113,6 @@ def aggregate_spawn_usage(events: Iterable[SpawnEnvelope]) -> SpawnUsageAggregat
             else:
                 total += metric.value
     return SpawnUsageAggregate(total, tuple(unknown))
-
 
 class SpawnTelemetryStore:
     def __init__(self, events_path: Path) -> None:
@@ -182,7 +170,6 @@ class SpawnTelemetryStore:
         _append_durable(self.reconciliations_path, _serialize(record))
         return record
 
-
 def _metric(value: object, name: str) -> TokenMetric:
     fields = _mapping(value, name)
     _exact_fields(fields, frozenset({"value", "unavailable_reason"}), name)
@@ -194,12 +181,10 @@ def _metric(value: object, name: str) -> TokenMetric:
         raise SpawnTelemetryError(f"{name} must be a value or null-with-reason")
     return TokenMetric(metric_value, None)
 
-
 def _mapping(value: object, name: str) -> dict[str, Any]:
     if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
         raise SpawnTelemetryError(f"{name} must be an object")
     return value
-
 
 def _exact_fields(
     fields: dict[str, Any], expected: frozenset[str], name: str
@@ -207,12 +192,10 @@ def _exact_fields(
     if fields.keys() != expected:
         raise SpawnTelemetryError(f"{name} has missing or unknown fields")
 
-
 def _text(value: object, name: str) -> str:
     if not isinstance(value, str) or not value or value != value.strip():
         raise SpawnTelemetryError(f"{name} must be normalized text")
     return value
-
 
 def _identifier(value: object, name: str) -> str:
     text = _text(value, name)
@@ -220,20 +203,16 @@ def _identifier(value: object, name: str) -> str:
         raise SpawnTelemetryError(f"{name} must be a stable identifier")
     return text
 
-
 def _optional_identifier(value: object, name: str) -> str | None:
     return None if value is None else _identifier(value, name)
-
 
 def _nonnegative_integer(value: object, name: str) -> int:
     if type(value) is not int or value < 0:
         raise SpawnTelemetryError(f"{name} must be a nonnegative integer")
     return value
 
-
 def _serialize(value: object) -> dict[str, Any]:
     return asdict(value)
-
 
 def _append_durable(path: Path, value: dict[str, Any]) -> None:
     directory = open_harness_data(path.parent, create=True)
@@ -241,7 +220,6 @@ def _append_durable(path: Path, value: dict[str, Any]) -> None:
         append_json_line(directory, path.name, value)
     finally:
         os.close(directory)
-
 
 @contextmanager
 def _exclusive_lock(path: Path):
@@ -255,7 +233,6 @@ def _exclusive_lock(path: Path):
         os.close(descriptor)
         os.close(directory)
 
-
 def _open_lock_file(directory: int, name: str) -> int:
     descriptor = os.open(
         name, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600, dir_fd=directory
@@ -265,7 +242,6 @@ def _open_lock_file(directory: int, name: str) -> int:
         return descriptor
     os.close(descriptor)
     raise SpawnTelemetryError("telemetry lock must be a single-link regular file")
-
 
 def _read_jsonl(path: Path) -> tuple[dict[str, Any], ...]:
     try:
@@ -283,7 +259,6 @@ def _read_jsonl(path: Path) -> tuple[dict[str, Any], ...]:
     finally:
         os.close(directory)
 
-
 def _parse_reconciliation(value: object) -> PrReconciliation:
     fields = _mapping(value, "PR reconciliation")
     expected = frozenset(
@@ -293,7 +268,7 @@ def _parse_reconciliation(value: object) -> PrReconciliation:
         }
     )
     _exact_fields(fields, expected, "PR reconciliation")
-    if fields["schema_version"] != 1:
+    if type(fields["schema_version"]) is not int or fields["schema_version"] != 1:
         raise SpawnTelemetryError("unsupported reconciliation schema_version")
     unknown = fields["unknown_token_fields"]
     if not isinstance(unknown, list) or not all(isinstance(item, str) for item in unknown):
@@ -309,7 +284,6 @@ def _parse_reconciliation(value: object) -> PrReconciliation:
         unknown_token_fields=tuple(unknown),
     )
 
-
 def _matching_reconciliation(
     records: tuple[PrReconciliation, ...], task_id: str, run_id: str
 ) -> PrReconciliation | None:
@@ -320,7 +294,6 @@ def _matching_reconciliation(
         ),
         None,
     )
-
 
 def _require_same_pr(record: PrReconciliation, pr_id: str) -> None:
     if record.pr_id != pr_id:
