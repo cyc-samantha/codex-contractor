@@ -64,3 +64,16 @@ def test_allows_only_pre_authorized_fallback() -> None:
     assert profile.requested_model == "gpt-5.6-terra"
     assert profile.actual_model == "gpt-5.6-sol"
     assert profile.fallback_reason == "pre-authorized profile fallback"
+
+
+def test_rejects_pre_authorized_effort_downgrade() -> None:
+    fallback = {("gpt-5.6-sol", "high"): ("gpt-5.6-Luna", "medium")}
+
+    with pytest.raises(ExecutionPolicyError, match="minimum effort"):
+        resolve_execution_profile(
+            "software_engineer",
+            "Build",
+            "complex",
+            {("gpt-5.6-Luna", "medium")},
+            fallback,
+        )

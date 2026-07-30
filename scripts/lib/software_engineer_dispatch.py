@@ -24,8 +24,23 @@ class SoftwareEngineerDispatchError(RuntimeError):
     """Raised when Software Engineer dispatch cannot pass its gates."""
 
 
+T13A_PROTECTED_WRITE_BOUNDARY_ACTIVE = False
+
+
+@dataclass(frozen=True)
+class DispatchBinding:
+    task_id: str
+    run_id: str
+    event_id: str
+    dispatch_id: str
+    role: str
+    role_instance_id: str
+    session_id: str
+
+
 @dataclass(frozen=True)
 class DispatchExecution:
+    binding: DispatchBinding
     payload: Any
     actual_model: str
     actual_reasoning_effort: str
@@ -35,7 +50,9 @@ class DispatchExecution:
     duration_ms: int
 
 
-RuntimePort = Callable[[DispatchContract, ExecutionProfile], DispatchExecution]
+RuntimePort = Callable[
+    [DispatchContract, ExecutionProfile, DispatchBinding], DispatchExecution
+]
 
 
 def dispatch_software_engineer(
@@ -48,18 +65,15 @@ def dispatch_software_engineer(
     runtime: RuntimePort,
     available_profiles: set[ProfileKey],
     authorized_fallbacks: Mapping[ProfileKey, ProfileKey],
-    *,
-    protected_write_boundary_active: bool,
 ) -> DispatchExecution:
-    _require_activation(contract, protected_write_boundary_active)
+    _require_activation(contract)
     profile = _resolve_profile(
         contract, work_type, available_profiles, authorized_fallbacks
     )
-    execution = runtime(contract, profile)
-    envelope = _envelope(
-        contract, profile, execution, run_id, event_id, retry_cycle_id
-    )
-    _validate_execution(profile, execution)
+    binding = _binding(contract, run_id, event_id)
+    execution = runtime(contract, profile, binding)
+    _validate_execution(binding, profile, execution)
+    envelope = _envelope(profile, execution, retry_cycle_id)
     try:
         telemetry.record(envelope)
     except SpawnTelemetryError as error:
@@ -67,12 +81,10 @@ def dispatch_software_engineer(
     return execution
 
 
-def _require_activation(
-    contract: DispatchContract, protected_write_boundary_active: bool
-) -> None:
+def _require_activation(contract: DispatchContract) -> None:
     if contract.role != "software_engineer":
         raise SoftwareEngineerDispatchError("dispatch role must be software_engineer")
-    if not protected_write_boundary_active:
+    if not T13A_PROTECTED_WRITE_BOUNDARY_ACTIVE:
         raise SoftwareEngineerDispatchError("T13A protected-write prerequisite is inactive")
 
 
@@ -101,30 +113,45 @@ def _resolve_profile(
 
 
 def _validate_execution(
-    profile: ExecutionProfile, execution: DispatchExecution
+    binding: DispatchBinding,
+    profile: ExecutionProfile,
+    execution: DispatchExecution,
 ) -> None:
+    if execution.binding != binding:
+        raise SoftwareEngineerDispatchError("runtime telemetry binding mismatch")
     actual = (execution.actual_model, execution.actual_reasoning_effort)
     if actual != (profile.actual_model, profile.actual_reasoning_effort):
         raise SoftwareEngineerDispatchError("telemetry execution profile mismatch")
 
 
-def _envelope(
-    contract: DispatchContract,
-    profile: ExecutionProfile,
-    execution: DispatchExecution,
-    run_id: str,
-    event_id: str,
-    retry_cycle_id: str,
-) -> SpawnEnvelope:
-    return SpawnEnvelope(
-        schema_version=1,
-        event_id=event_id,
+def _binding(
+    contract: DispatchContract, run_id: str, event_id: str
+) -> DispatchBinding:
+    return DispatchBinding(
         task_id=contract.task_id,
         run_id=run_id,
+        event_id=event_id,
         dispatch_id=contract.dispatch_id,
         role=contract.role,
         role_instance_id=contract.role_instance_id,
         session_id=contract.session_id,
+    )
+
+
+def _envelope(
+    profile: ExecutionProfile,
+    execution: DispatchExecution,
+    retry_cycle_id: str,
+) -> SpawnEnvelope:
+    return SpawnEnvelope(
+        schema_version=1,
+        event_id=execution.binding.event_id,
+        task_id=execution.binding.task_id,
+        run_id=execution.binding.run_id,
+        dispatch_id=execution.binding.dispatch_id,
+        role=execution.binding.role,
+        role_instance_id=execution.binding.role_instance_id,
+        session_id=execution.binding.session_id,
         pr_id=None,
         requested_model=profile.requested_model,
         actual_model=execution.actual_model,

@@ -11,6 +11,9 @@ class ExecutionPolicyError(ValueError):
 
 
 ProfileKey = tuple[str, str]
+EFFORT_RANK = {
+    "low": 0, "medium": 1, "high": 2, "xhigh": 3, "max": 4, "ultra": 5,
+}
 
 
 @dataclass(frozen=True)
@@ -36,6 +39,8 @@ def resolve_execution_profile(
     fallback = authorized_fallbacks.get(requested)
     if fallback is None or fallback not in available_profiles:
         raise ExecutionPolicyError("no approved available profile")
+    if _effort_rank(fallback[1]) < _effort_rank(requested[1]):
+        raise ExecutionPolicyError("fallback violates minimum effort")
     return _profile(requested, fallback, "pre-authorized profile fallback")
 
 
@@ -81,6 +86,13 @@ def _engineer_effort(gear: str) -> str:
         return efforts[gear]
     except KeyError as error:
         raise ExecutionPolicyError("unsupported gear") from error
+
+
+def _effort_rank(effort: str) -> int:
+    try:
+        return EFFORT_RANK[effort]
+    except KeyError as error:
+        raise ExecutionPolicyError("unsupported fallback effort") from error
 
 
 def _profile(

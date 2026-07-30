@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 import sys
+from concurrent.futures import ThreadPoolExecutor
+import json
 
 import pytest
 
@@ -132,3 +134,55 @@ def test_reconciles_late_pr_identity_idempotently(tmp_path: Path) -> None:
     assert first.pr_id == "32"
     assert first.known_token_total == 150
     assert len(store.read_reconciliations()) == 1
+
+
+def test_concurrent_event_records_do_not_lose_usage(tmp_path: Path) -> None:
+    store = SpawnTelemetryStore(tmp_path / "spawn-events.jsonl")
+    events = tuple(
+        parse_spawn_envelope(envelope(event_id=f"telemetry-{index}"))
+        for index in range(20)
+    )
+
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        tuple(executor.map(store.record, events))
+
+    assert {event.event_id for event in store.read_events()} == {
+        event.event_id for event in events
+    }
+
+
+def test_concurrent_pr_reconciliation_is_single_and_idempotent(
+    tmp_path: Path,
+) -> None:
+    store = SpawnTelemetryStore(tmp_path / "spawn-events.jsonl")
+    store.record(parse_spawn_envelope(envelope()))
+
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        records = tuple(
+            executor.map(
+                lambda _index: store.reconcile_pr(
+                    "t13b-t13d-dispatch", "run-01", "32"
+                ),
+                range(20),
+            )
+        )
+
+    assert len(set(records)) == 1
+    assert len(store.read_reconciliations()) == 1
+
+
+def test_rejects_unknown_reconciliation_schema_version(tmp_path: Path) -> None:
+    path = tmp_path / "pr-reconciliations.jsonl"
+    record = {
+        "schema_version": 2,
+        "task_id": "t13b-t13d-dispatch",
+        "run_id": "run-01",
+        "pr_id": "32",
+        "known_token_total": 1,
+        "unknown_token_fields": [],
+    }
+    path.write_text(json.dumps(record) + "\n")
+    store = SpawnTelemetryStore(tmp_path / "spawn-events.jsonl")
+
+    with pytest.raises(SpawnTelemetryError, match="schema_version"):
+        store.read_reconciliations()

@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from contextlib import contextmanager
+import fcntl
 import json
 import os
 from pathlib import Path
 import re
+import stat
 from typing import Any, Iterable
 
 from scripts.lib.writer_claim_io import (
@@ -132,12 +135,13 @@ class SpawnTelemetryStore:
 
     def record(self, event: SpawnEnvelope) -> None:
         validated = parse_spawn_envelope(_serialize(event))
-        existing = self.read_events()
-        if any(item.event_id == validated.event_id for item in existing):
-            raise SpawnTelemetryError("duplicate telemetry event_id")
-        _append_durable(self.events_path, _serialize(validated))
-        if validated not in self.read_events():
-            raise SpawnTelemetryError("telemetry event was not durably persisted")
+        with _exclusive_lock(self.events_path):
+            existing = self.read_events()
+            if any(item.event_id == validated.event_id for item in existing):
+                raise SpawnTelemetryError("duplicate telemetry event_id")
+            _append_durable(self.events_path, _serialize(validated))
+            if validated not in self.read_events():
+                raise SpawnTelemetryError("telemetry event was not durably persisted")
 
     def read_events(self) -> tuple[SpawnEnvelope, ...]:
         return tuple(parse_spawn_envelope(item) for item in _read_jsonl(self.events_path))
@@ -148,13 +152,15 @@ class SpawnTelemetryStore:
             _identifier(run_id, "run_id"),
             _identifier(pr_id, "pr_id"),
         )
-        existing = self.read_reconciliations()
-        matching = [item for item in existing if item.task_id == task_id and item.run_id == run_id]
-        if matching:
-            if matching[0].pr_id != pr_id:
-                raise SpawnTelemetryError("task run already reconciled to another PR")
-            return matching[0]
-        return self._record_reconciliation(*identifiers)
+        with _exclusive_lock(self.events_path):
+            with _exclusive_lock(self.reconciliations_path):
+                matching = _matching_reconciliation(
+                    self.read_reconciliations(), task_id, run_id
+                )
+                if matching is not None:
+                    _require_same_pr(matching, pr_id)
+                    return matching
+                return self._record_reconciliation(*identifiers)
 
     def read_reconciliations(self) -> tuple[PrReconciliation, ...]:
         return tuple(_parse_reconciliation(item) for item in _read_jsonl(self.reconciliations_path))
@@ -237,6 +243,30 @@ def _append_durable(path: Path, value: dict[str, Any]) -> None:
         os.close(directory)
 
 
+@contextmanager
+def _exclusive_lock(path: Path):
+    directory = open_harness_data(path.parent, create=True)
+    descriptor = _open_lock_file(directory, f".{path.name}.lock")
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        yield
+    finally:
+        fcntl.flock(descriptor, fcntl.LOCK_UN)
+        os.close(descriptor)
+        os.close(directory)
+
+
+def _open_lock_file(directory: int, name: str) -> int:
+    descriptor = os.open(
+        name, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600, dir_fd=directory
+    )
+    metadata = os.fstat(descriptor)
+    if stat.S_ISREG(metadata.st_mode) and metadata.st_nlink == 1:
+        return descriptor
+    os.close(descriptor)
+    raise SpawnTelemetryError("telemetry lock must be a single-link regular file")
+
+
 def _read_jsonl(path: Path) -> tuple[dict[str, Any], ...]:
     try:
         directory = open_harness_data(path.parent, create=False)
@@ -263,6 +293,8 @@ def _parse_reconciliation(value: object) -> PrReconciliation:
         }
     )
     _exact_fields(fields, expected, "PR reconciliation")
+    if fields["schema_version"] != 1:
+        raise SpawnTelemetryError("unsupported reconciliation schema_version")
     unknown = fields["unknown_token_fields"]
     if not isinstance(unknown, list) or not all(isinstance(item, str) for item in unknown):
         raise SpawnTelemetryError("unknown_token_fields must be a list of strings")
@@ -276,3 +308,20 @@ def _parse_reconciliation(value: object) -> PrReconciliation:
         ),
         unknown_token_fields=tuple(unknown),
     )
+
+
+def _matching_reconciliation(
+    records: tuple[PrReconciliation, ...], task_id: str, run_id: str
+) -> PrReconciliation | None:
+    return next(
+        (
+            record for record in records
+            if record.task_id == task_id and record.run_id == run_id
+        ),
+        None,
+    )
+
+
+def _require_same_pr(record: PrReconciliation, pr_id: str) -> None:
+    if record.pr_id != pr_id:
+        raise SpawnTelemetryError("task run already reconciled to another PR")
