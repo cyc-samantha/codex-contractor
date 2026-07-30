@@ -19,8 +19,25 @@ from pathlib import Path
 
 config = tomllib.loads(Path("pyproject.toml").read_text())["tool"]["mutmut"]
 assert config["source_paths"] == ["scripts/lib"]
-assert config["only_mutate"] == ["scripts/lib/dispatch_contract.py", "scripts/lib/pipeline_state.py", "scripts/lib/task_discovery.py", "scripts/lib/task_selection.py", "scripts/lib/writer_claim.py", "scripts/lib/writer_claim_io.py", "scripts/lib/writer_claim_reconciliation.py"]
-assert config["pytest_add_cli_args_test_selection"] == ["tests/test_dispatch_contract.py", "tests/test_pipeline_state.py", "tests/test_task_discovery.py", "tests/test_task_selection.py", "tests/test_writer_claim.py"]
+assert config["only_mutate"] == ["scripts/lib/dispatch_contract.py", "scripts/lib/execution_policy.py", "scripts/lib/pipeline_state.py", "scripts/lib/software_engineer_dispatch.py", "scripts/lib/spawn_telemetry.py", "scripts/lib/task_discovery.py", "scripts/lib/task_selection.py", "scripts/lib/writer_claim.py", "scripts/lib/writer_claim_io.py", "scripts/lib/writer_claim_reconciliation.py"]
+assert config["pytest_add_cli_args_test_selection"] == ["tests/test_dispatch_contract.py", "tests/test_execution_policy.py", "tests/test_pipeline_state.py", "tests/test_software_engineer_dispatch.py", "tests/test_spawn_telemetry.py", "tests/test_task_discovery.py", "tests/test_task_selection.py", "tests/test_writer_claim.py"]
+'
+
+  [ "$status" -eq 0 ]
+}
+
+@test "mutation config covers T13B-T13D protected modules and tests" {
+  run python3 -c '
+import tomllib
+from pathlib import Path
+
+config = tomllib.loads(Path("pyproject.toml").read_text())["tool"]["mutmut"]
+assert "scripts/lib/execution_policy.py" in config["only_mutate"]
+assert "scripts/lib/software_engineer_dispatch.py" in config["only_mutate"]
+assert "scripts/lib/spawn_telemetry.py" in config["only_mutate"]
+assert "tests/test_execution_policy.py" in config["pytest_add_cli_args_test_selection"]
+assert "tests/test_software_engineer_dispatch.py" in config["pytest_add_cli_args_test_selection"]
+assert "tests/test_spawn_telemetry.py" in config["pytest_add_cli_args_test_selection"]
 '
 
   [ "$status" -eq 0 ]
@@ -56,7 +73,7 @@ assert config["pytest_add_cli_args_test_selection"] == ["tests/test_dispatch_con
 }
 
 @test "PR filtering protects mutation tooling and its Python test suite" {
-  paths=(pyproject.toml requirements-dev.txt "scripts/**" tests/test_dispatch_contract.py tests/test_pipeline_state.py tests/test_task_discovery.py tests/test_task_selection.py tests/test_writer_claim.py)
+  paths=(pyproject.toml requirements-dev.txt "scripts/**" tests/test_dispatch_contract.py tests/test_execution_policy.py tests/test_pipeline_state.py tests/test_software_engineer_dispatch.py tests/test_spawn_telemetry.py tests/test_task_discovery.py tests/test_task_selection.py tests/test_writer_claim.py)
   for path in "${paths[@]}"; do
     run grep -F -- "- \"$path\"" "$REPO_ROOT/.github/workflows/harness-gate.yml"
     [ "$status" -eq 0 ]
