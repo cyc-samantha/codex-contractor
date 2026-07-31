@@ -36,6 +36,18 @@ def telemetry(tmp_path: Path, event_id: str = "review-event-02") -> SpawnTelemet
     return store
 
 
+def record_review_event(store: SpawnTelemetryStore, event_id: str) -> None:
+    store.record(
+        SpawnEnvelope(
+            1, event_id, "t14-t15-review-loop", "run-01",
+            "review-dispatch-01", "code_reviewer", "code_reviewer-01",
+            "session-code_reviewer-01", None, "gpt-5.6-sol",
+            "gpt-5.6-sol", "medium", "medium", TokenMetric(10, None),
+            TokenMetric(0, None), TokenMetric(5, None), 100, "rereview-next",
+        )
+    )
+
+
 def test_findings_return_to_bound_engineer_and_invalidate_prior_review() -> None:
     state = workflow()
 
@@ -154,3 +166,37 @@ def test_targeted_rereview_rejects_missing_correlated_telemetry(
         fixed.accept_targeted_rereview(
             approved, SpawnTelemetryStore(tmp_path / "missing.jsonl")
         )
+
+
+def test_each_review_cycle_advances_the_telemetry_freshness_watermark(
+    tmp_path: Path,
+) -> None:
+    first_fix = workflow().record_fix(
+        "software_engineer-01", "session-software_engineer-01", "c" * 40
+    )
+    second_review = parse_review_evidence(
+        evidence(reviewed_head="c" * 40, telemetry_event_id="review-event-02")
+    )
+    store = telemetry(tmp_path)
+    second_fix = first_fix.accept_targeted_rereview(
+        second_review, store
+    ).record_fix(
+        "software_engineer-01", "session-software_engineer-01", "d" * 40
+    )
+    stale = parse_review_evidence(
+        evidence(reviewed_head="d" * 40, telemetry_event_id="review-event-02")
+    )
+
+    with pytest.raises(ReviewWorkflowError, match="fresh"):
+        second_fix.accept_targeted_rereview(stale, store)
+
+    record_review_event(store, "review-event-03")
+    fresh = parse_review_evidence(
+        evidence(
+            reviewed_head="d" * 40,
+            telemetry_event_id="review-event-03",
+            verdict="APPROVE",
+            findings=[],
+        )
+    )
+    assert second_fix.accept_targeted_rereview(fresh, store).review_evidence == fresh

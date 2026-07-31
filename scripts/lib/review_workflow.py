@@ -21,6 +21,7 @@ class ReviewWorkflow:
     task_id: str
     software_engineer_id: str
     software_engineer_session_id: str
+    software_engineer_model: str
     current_head: str
     review_evidence: ReviewEvidence | None
     requires_reviewer: tuple[str, str] | None
@@ -32,6 +33,7 @@ class ReviewWorkflow:
             evidence.task_id,
             evidence.software_engineer_id,
             evidence.software_engineer_session_id,
+            evidence.software_engineer_model,
             evidence.reviewed_head,
             evidence,
             None,
@@ -80,7 +82,12 @@ class ReviewWorkflow:
             raise ReviewWorkflowError("targeted re-review requires the raising reviewer")
         self._require_evidence_binding(evidence)
         self._require_telemetry(evidence, telemetry)
-        return replace(self, review_evidence=evidence, requires_reviewer=None)
+        return replace(
+            self,
+            review_evidence=evidence,
+            requires_reviewer=None,
+            prior_telemetry_event_id=evidence.telemetry_event_id,
+        )
 
     def _require_engineer(self, engineer_id: str, session_id: str) -> None:
         if (
@@ -98,6 +105,7 @@ class ReviewWorkflow:
             evidence.software_engineer_id != self.software_engineer_id
             or evidence.software_engineer_session_id
             != self.software_engineer_session_id
+            or evidence.software_engineer_model != self.software_engineer_model
         ):
             raise ReviewWorkflowError("targeted re-review engineer mismatch")
         if evidence.telemetry_event_id == self.prior_telemetry_event_id:
@@ -122,4 +130,5 @@ def _telemetry_matches(evidence: ReviewEvidence, event: SpawnEnvelope) -> bool:
         and event.role == "code_reviewer"
         and event.role_instance_id == evidence.reviewer_id
         and event.session_id == evidence.reviewer_session_id
+        and event.actual_model == evidence.reviewer_model
     )

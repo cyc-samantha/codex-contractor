@@ -40,6 +40,8 @@ class ReviewBinding:
     reviewer_session_id: str
     software_engineer_id: str
     software_engineer_session_id: str
+    software_engineer_model: str
+    reviewer_model: str
     reviewed_head: str
 
 
@@ -65,6 +67,7 @@ def dispatch_code_review(
     contract: DispatchContract,
     software_engineer_id: str,
     software_engineer_session_id: str,
+    software_engineer_model: str,
     target_probe: TargetProbe,
     run_id: str,
     event_id: str,
@@ -80,9 +83,11 @@ def dispatch_code_review(
         current_head, worktree_clean,
     )
     profile = _resolve_profile(contract, available_profiles, authorized_fallbacks)
+    if software_engineer_model == profile.actual_model:
+        raise CodeReviewDispatchError("formal review requires a distinct model")
     binding = _binding(
         contract, software_engineer_id, software_engineer_session_id,
-        run_id, event_id,
+        software_engineer_model, profile.actual_model, run_id, event_id,
     )
     execution = runtime(contract, profile, binding)
     _require_unchanged_target(contract, target_probe())
@@ -144,6 +149,8 @@ def _binding(
     contract: DispatchContract,
     engineer_id: str,
     engineer_session_id: str,
+    engineer_model: str,
+    reviewer_model: str,
     run_id: str,
     event_id: str,
 ) -> ReviewBinding:
@@ -156,6 +163,8 @@ def _binding(
         reviewer_session_id=contract.session_id,
         software_engineer_id=engineer_id,
         software_engineer_session_id=engineer_session_id,
+        software_engineer_model=engineer_model,
+        reviewer_model=reviewer_model,
         reviewed_head=contract.target_head,
     )
 
@@ -191,8 +200,10 @@ def _evidence_matches(binding: ReviewBinding, evidence: ReviewEvidence) -> bool:
         and evidence.software_engineer_id == binding.software_engineer_id
         and evidence.software_engineer_session_id
         == binding.software_engineer_session_id
+        and evidence.software_engineer_model == binding.software_engineer_model
         and evidence.reviewer_id == binding.reviewer_id
         and evidence.reviewer_session_id == binding.reviewer_session_id
+        and evidence.reviewer_model == binding.reviewer_model
         and evidence.dispatch_id == binding.dispatch_id
         and evidence.run_id == binding.run_id
         and evidence.telemetry_event_id == binding.event_id

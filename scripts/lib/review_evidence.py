@@ -19,7 +19,8 @@ SEVERITIES = frozenset({"CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"})
 EVIDENCE_FIELDS = frozenset(
     {
         "schema_version", "task_id", "reviewed_head", "software_engineer_id",
-        "software_engineer_session_id", "reviewer_id", "reviewer_session_id",
+        "software_engineer_session_id", "software_engineer_model", "reviewer_id",
+        "reviewer_session_id", "reviewer_model",
         "dispatch_id", "run_id", "telemetry_event_id", "verdict", "findings",
     }
 )
@@ -50,8 +51,10 @@ class ReviewEvidence:
     reviewed_head: str
     software_engineer_id: str
     software_engineer_session_id: str
+    software_engineer_model: str
     reviewer_id: str
     reviewer_session_id: str
+    reviewer_model: str
     dispatch_id: str
     run_id: str
     telemetry_event_id: str
@@ -86,10 +89,14 @@ def _build_evidence(fields: dict[str, Any]) -> ReviewEvidence:
         software_engineer_session_id=_identifier(
             fields["software_engineer_session_id"], "software_engineer_session_id"
         ),
+        software_engineer_model=_text(
+            fields["software_engineer_model"], "software_engineer_model"
+        ),
         reviewer_id=_identifier(fields["reviewer_id"], "reviewer_id"),
         reviewer_session_id=_identifier(
             fields["reviewer_session_id"], "reviewer_session_id"
         ),
+        reviewer_model=_text(fields["reviewer_model"], "reviewer_model"),
         dispatch_id=_identifier(fields["dispatch_id"], "dispatch_id"),
         run_id=_identifier(fields["run_id"], "run_id"),
         telemetry_event_id=_identifier(
@@ -134,6 +141,8 @@ def _validate_evidence(evidence: ReviewEvidence) -> None:
         or evidence.reviewer_session_id == evidence.software_engineer_session_id
     ):
         raise ReviewEvidenceError("self-review is forbidden")
+    if evidence.reviewer_model == evidence.software_engineer_model:
+        raise ReviewEvidenceError("formal review requires a distinct model")
     if evidence.verdict == "APPROVE" and evidence.findings:
         raise ReviewEvidenceError("APPROVE cannot contain findings")
     if evidence.verdict == "CHANGES_REQUESTED" and not evidence.findings:

@@ -70,6 +70,7 @@ def dispatch(tmp_path: Path, **overrides: object):
         "contract": contract(),
         "software_engineer_id": "software_engineer-01",
         "software_engineer_session_id": "session-software_engineer-01",
+        "software_engineer_model": "gpt-5.6-terra",
         "target_probe": lambda: target_state,
         "run_id": "run-01",
         "event_id": "review-event-01",
@@ -98,6 +99,7 @@ def test_accepts_fresh_read_only_review_after_correlated_telemetry_is_durable(
     [
         ({"software_engineer_id": "code_reviewer-01"}, "self-review"),
         ({"software_engineer_session_id": "session-code_reviewer-01"}, "self-review"),
+        ({"software_engineer_model": "gpt-5.6-sol"}, "distinct model"),
         ({"target_state": ("b" * 40, False)}, "clean"),
         ({"target_state": ("c" * 40, True)}, "target HEAD"),
     ],
