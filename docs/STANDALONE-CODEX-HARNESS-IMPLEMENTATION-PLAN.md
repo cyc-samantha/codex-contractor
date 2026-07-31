@@ -813,7 +813,7 @@ quality gate or weakening its fail-closed behavior.
 | T11 | Complete | Add identity-safe claim heartbeat and release | T10 |
 | T12 | Complete | Add human-confirmed claim takeover and trajectory archive | T11 |
 | T13 | Complete | Define versioned role dispatch contracts with stable engineer and reviewer instance identities | T09, T11 |
-| T13A | In review | Enforce a closed orchestrator coordination-artifact allowlist and activate Software Engineer dispatch only with a boundary-issued capability backed by a durably read-back correlated telemetry canary | T13, T13B-T13D |
+| T13A | Complete | Enforce a closed orchestrator coordination-artifact allowlist and activate Software Engineer dispatch only with a boundary-issued capability backed by a durably read-back correlated telemetry canary; merged in PR #34 | T13, T13B-T13D |
 | T13B-T13D | Complete | Emit and aggregate the shared minimal envelope, resolve deterministic model-effort allocation with fail-closed fallback, and dispatch the Software Engineer only after correlated telemetry is durably proven; merged in PR #33 with T13A activation mechanically disabled | T13 |
 | T14 | Planned | Add fresh read-only code review bound to task and HEAD with required shared-envelope coverage | T13B-T13D, T13A |
 | T15 | Planned | Return findings to the bound engineer and targeted re-review to the bound raising reviewer, with shared-envelope coverage for each spawn | T14, T13B-T13D |
