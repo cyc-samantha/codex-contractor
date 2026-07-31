@@ -67,7 +67,7 @@ def dispatch_code_review(
     contract: DispatchContract,
     software_engineer_id: str,
     software_engineer_session_id: str,
-    software_engineer_model: str,
+    software_engineer_event_id: str,
     target_probe: TargetProbe,
     run_id: str,
     event_id: str,
@@ -81,6 +81,14 @@ def dispatch_code_review(
     _require_reviewable(
         contract, software_engineer_id, software_engineer_session_id,
         current_head, worktree_clean,
+    )
+    software_engineer_model = _engineer_model(
+        telemetry,
+        software_engineer_event_id,
+        contract.task_id,
+        run_id,
+        software_engineer_id,
+        software_engineer_session_id,
     )
     profile = _resolve_profile(contract, available_profiles, authorized_fallbacks)
     if software_engineer_model == profile.actual_model:
@@ -97,6 +105,46 @@ def dispatch_code_review(
     except SpawnTelemetryError as error:
         raise CodeReviewDispatchError(f"telemetry gate failed: {error}") from error
     return validated
+
+
+def _engineer_model(
+    telemetry: SpawnTelemetryStore,
+    event_id: str,
+    task_id: str,
+    run_id: str,
+    engineer_id: str,
+    engineer_session_id: str,
+) -> str:
+    matches = tuple(
+        event for event in telemetry.read_events()
+        if _engineer_event_matches(
+            event, event_id, task_id, run_id, engineer_id, engineer_session_id
+        )
+    )
+    if len(matches) != 1:
+        raise CodeReviewDispatchError(
+            "durable Software Engineer telemetry is missing or mismatched"
+        )
+    return matches[0].actual_model
+
+
+def _engineer_event_matches(
+    event: SpawnEnvelope,
+    event_id: str,
+    task_id: str,
+    run_id: str,
+    engineer_id: str,
+    engineer_session_id: str,
+) -> bool:
+    identity = (event.role_instance_id, event.session_id)
+    expected_identity = (engineer_id, engineer_session_id)
+    return (
+        event.event_id == event_id
+        and event.task_id == task_id
+        and event.run_id == run_id
+        and event.role == "software_engineer"
+        and identity == expected_identity
+    )
 
 
 def _require_reviewable(

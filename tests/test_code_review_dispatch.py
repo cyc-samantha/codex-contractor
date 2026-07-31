@@ -14,7 +14,11 @@ from scripts.lib.code_review_dispatch import (  # noqa: E402
 )
 from scripts.lib.dispatch_contract import parse_dispatch_contract  # noqa: E402
 from scripts.lib.review_evidence import parse_review_evidence  # noqa: E402
-from scripts.lib.spawn_telemetry import SpawnTelemetryStore, TokenMetric  # noqa: E402
+from scripts.lib.spawn_telemetry import (  # noqa: E402
+    SpawnEnvelope,
+    SpawnTelemetryStore,
+    TokenMetric,
+)
 from tests.test_review_evidence import evidence  # noqa: E402
 
 
@@ -66,16 +70,29 @@ def execution(binding, review=None, **overrides: object) -> ReviewExecution:
 
 def dispatch(tmp_path: Path, **overrides: object):
     target_state = overrides.pop("target_state", ("b" * 40, True))
+    engineer_model = overrides.pop("software_engineer_actual_model", "gpt-5.6-terra")
+    store = overrides.pop(
+        "telemetry", SpawnTelemetryStore(tmp_path / "spawn-events.jsonl")
+    )
+    store.record(
+        SpawnEnvelope(
+            1, "engineer-event-01", "t14-t15-review-loop", "run-01",
+            "engineer-dispatch-01", "software_engineer", "software_engineer-01",
+            "session-software_engineer-01", None, engineer_model, engineer_model,
+            "high", "high", TokenMetric(100, None), TokenMetric(20, None),
+            TokenMetric(30, None), 900, "initial",
+        )
+    )
     values = {
         "contract": contract(),
         "software_engineer_id": "software_engineer-01",
         "software_engineer_session_id": "session-software_engineer-01",
-        "software_engineer_model": "gpt-5.6-terra",
+        "software_engineer_event_id": "engineer-event-01",
         "target_probe": lambda: target_state,
         "run_id": "run-01",
         "event_id": "review-event-01",
         "retry_cycle_id": "initial",
-        "telemetry": SpawnTelemetryStore(tmp_path / "spawn-events.jsonl"),
+        "telemetry": store,
         "runtime": lambda _contract, _profile, binding: execution(binding),
         "available_profiles": {("gpt-5.6-sol", "medium")},
         "authorized_fallbacks": {},
@@ -90,8 +107,8 @@ def test_accepts_fresh_read_only_review_after_correlated_telemetry_is_durable(
     result, store = dispatch(tmp_path)
 
     assert result.evidence.reviewed_head == "b" * 40
-    assert store.read_events()[0].role == "code_reviewer"
-    assert store.read_events()[0].event_id == "review-event-01"
+    assert store.read_events()[-1].role == "code_reviewer"
+    assert store.read_events()[-1].event_id == "review-event-01"
 
 
 @pytest.mark.parametrize(
@@ -99,7 +116,8 @@ def test_accepts_fresh_read_only_review_after_correlated_telemetry_is_durable(
     [
         ({"software_engineer_id": "code_reviewer-01"}, "self-review"),
         ({"software_engineer_session_id": "session-code_reviewer-01"}, "self-review"),
-        ({"software_engineer_model": "gpt-5.6-sol"}, "distinct model"),
+        ({"software_engineer_actual_model": "gpt-5.6-sol"}, "distinct model"),
+        ({"software_engineer_event_id": "missing-event"}, "Engineer telemetry"),
         ({"target_state": ("b" * 40, False)}, "clean"),
         ({"target_state": ("c" * 40, True)}, "target HEAD"),
     ],
@@ -142,4 +160,4 @@ def test_rejects_post_review_repository_mutation_before_telemetry(
     with pytest.raises(CodeReviewDispatchError, match="changed during review"):
         dispatch(tmp_path, target_probe=lambda: next(states), telemetry=store)
 
-    assert store.read_events() == ()
+    assert tuple(event.role for event in store.read_events()) == ("software_engineer",)
