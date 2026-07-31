@@ -815,8 +815,8 @@ quality gate or weakening its fail-closed behavior.
 | T13 | Complete | Define versioned role dispatch contracts with stable engineer and reviewer instance identities | T09, T11 |
 | T13A | Complete | Enforce a closed orchestrator coordination-artifact allowlist and activate Software Engineer dispatch only with a boundary-issued capability backed by a durably read-back correlated telemetry canary; merged in PR #34 | T13, T13B-T13D |
 | T13B-T13D | Complete | Emit and aggregate the shared minimal envelope, resolve deterministic model-effort allocation with fail-closed fallback, and dispatch the Software Engineer only after correlated telemetry is durably proven; merged in PR #33 with T13A activation mechanically disabled | T13 |
-| T14 | In review | Add fresh read-only code review bound to task and HEAD with required shared-envelope coverage; bundled with T15 in PR #35 | T13B-T13D, T13A |
-| T15 | In review | Return findings to the bound engineer and targeted re-review to the bound raising reviewer, with shared-envelope coverage for each spawn; bundled with T14 in PR #35 | T14, T13B-T13D |
+| T14 | In review | Add fresh read-only code review bound to task and HEAD with required shared-envelope coverage; bundled with T15 in PR #36 | T13B-T13D, T13A |
+| T15 | In review | Return findings to the bound engineer and targeted re-review to the bound raising reviewer, with shared-envelope coverage for each spawn; bundled with T14 in PR #36 | T14, T13B-T13D |
 | T16 | Planned | Add automatic High Risk triggers and human-authorized downgrade enforcement | T04 |
 | T17 | Planned | Add security-first review, re-review, sign-off, invalidation, and required shared-envelope coverage | T13B-T13D, T15, T16 |
 | T18 | Planned | Write verification evidence bound to reviewed HEAD | T15 |
