@@ -49,7 +49,7 @@ class RiskDecision:
     effective_gear: str
     triggers: tuple[str, ...]
     human_elevated: bool
-    downgrade: dict[str, str] | None
+    downgrade: DowngradeAuthorization | None
 
     def as_record(self) -> dict[str, object]:
         """Return a JSON-compatible record for pipeline state."""
@@ -139,8 +139,8 @@ def _validate_downgrade(authorization: DowngradeAuthorization) -> None:
 
 def _downgrade_record(
     authorization: DowngradeAuthorization | None,
-) -> dict[str, str] | None:
+) -> DowngradeAuthorization | None:
     if authorization is None:
         return None
     _validate_downgrade(authorization)
-    return asdict(authorization)
+    return authorization
