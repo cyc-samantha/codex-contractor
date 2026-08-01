@@ -137,6 +137,17 @@ def _validate_downgrade(authorization: DowngradeAuthorization) -> None:
         raise RiskRoutingError("downgrade authorization requires rationale and ID")
 
 
+def validate_downgrade_authorization(
+    authorization: DowngradeAuthorization,
+) -> DowngradeAuthorization:
+    """Validate and return a downgrade record for downstream evidence."""
+
+    if not isinstance(authorization, DowngradeAuthorization):
+        raise RiskRoutingError("downgrade authorization has invalid type")
+    _validate_downgrade(authorization)
+    return authorization
+
+
 def _downgrade_record(
     authorization: DowngradeAuthorization | None,
 ) -> DowngradeAuthorization | None:

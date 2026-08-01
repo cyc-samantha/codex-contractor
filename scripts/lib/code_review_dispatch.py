@@ -18,6 +18,11 @@ from scripts.lib.review_evidence import (
     parse_review_evidence,
     serialize_review_evidence,
 )
+from scripts.lib.security_review import (
+    SecurityReviewError,
+    SecurityReviewState,
+    require_code_review_approval,
+)
 from scripts.lib.spawn_telemetry import (
     SpawnEnvelope,
     SpawnTelemetryError,
@@ -76,8 +81,10 @@ def dispatch_code_review(
     runtime: RuntimePort,
     available_profiles: set[ProfileKey],
     authorized_fallbacks: Mapping[ProfileKey, ProfileKey],
+    security_review: SecurityReviewState | None = None,
 ) -> ReviewExecution:
     current_head, worktree_clean = target_probe()
+    _require_security_approval(security_review, current_head)
     _require_reviewable(
         contract, software_engineer_id, software_engineer_session_id,
         current_head, worktree_clean,
@@ -105,6 +112,17 @@ def dispatch_code_review(
     except SpawnTelemetryError as error:
         raise CodeReviewDispatchError(f"telemetry gate failed: {error}") from error
     return validated
+
+
+def _require_security_approval(
+    security_review: SecurityReviewState | None, target_head: str
+) -> None:
+    if security_review is None:
+        return
+    try:
+        require_code_review_approval(security_review, target_head)
+    except SecurityReviewError as error:
+        raise CodeReviewDispatchError(str(error)) from error
 
 
 def _engineer_model(

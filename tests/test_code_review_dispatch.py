@@ -20,6 +20,7 @@ from scripts.lib.spawn_telemetry import (  # noqa: E402
     TokenMetric,
 )
 from tests.test_review_evidence import evidence  # noqa: E402
+from tests.test_security_ordering import approval, security_state  # noqa: E402
 
 
 def contract(**overrides: object):
@@ -161,3 +162,33 @@ def test_rejects_post_review_repository_mutation_before_telemetry(
         dispatch(tmp_path, target_probe=lambda: next(states), telemetry=store)
 
     assert tuple(event.role for event in store.read_events()) == ("software_engineer",)
+
+
+def test_security_sign_off_is_required_before_code_review_dispatch(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(CodeReviewDispatchError, match="approval"):
+        dispatch(tmp_path, security_review=security_state())
+
+    store = SpawnTelemetryStore(tmp_path / "approved-events.jsonl")
+    approved = security_state().record_approval(approval(), telemetry(store))
+    result, _ = dispatch(
+        tmp_path,
+        telemetry=store,
+        security_review=approved,
+    )
+
+    assert result.evidence.verdict == "CHANGES_REQUESTED"
+
+
+def telemetry(store: SpawnTelemetryStore) -> SpawnTelemetryStore:
+    store.record(
+        SpawnEnvelope(
+            1, "security-event-01", "t17-security-signoff", "run-01",
+            "security-dispatch-01", "security_reviewer", "security_reviewer-01",
+            "session-security_reviewer-01", None, "gpt-5.6-sol", "gpt-5.6-sol",
+            "medium", "medium", TokenMetric(10, None), TokenMetric(0, None),
+            TokenMetric(5, None), 100, "initial",
+        )
+    )
+    return store
