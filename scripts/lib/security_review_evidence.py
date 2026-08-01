@@ -21,6 +21,7 @@ from scripts.lib.security_review import (
     _safe_path,
     _text,
     validate_change_evidence,
+    validate_security_review_state,
 )
 
 
@@ -28,7 +29,7 @@ STATE_FIELDS = frozenset(
     {
         "schema_version", "task_id", "required", "triggers", "human_elevated",
         "target_head", "preserved_changes", "prior_telemetry_event_id",
-        "downgrade", "approval",
+        "prior_reviewer_id", "prior_reviewer_session_id", "downgrade", "approval",
     }
 )
 APPROVAL_FIELDS = frozenset(
@@ -75,48 +76,21 @@ def parse_security_review_state(value: object) -> SecurityReviewState:
     prior_event = _optional_identifier(
         fields["prior_telemetry_event_id"], "prior_telemetry_event_id"
     )
+    prior_reviewer_id = _optional_identifier(
+        fields["prior_reviewer_id"], "prior_reviewer_id"
+    )
+    prior_reviewer_session_id = _optional_identifier(
+        fields["prior_reviewer_session_id"], "prior_reviewer_session_id"
+    )
     downgrade = _downgrade(fields["downgrade"])
     approval = _approval(fields["approval"])
-    _validate_state(
-        task_id, required, triggers, human_elevated, preserved_changes,
-        prior_event, downgrade, approval,
-    )
-    return SecurityReviewState(
+    state = SecurityReviewState(
         1, task_id, required, triggers, human_elevated,
-        target_head, preserved_changes, prior_event, downgrade, approval,
+        target_head, preserved_changes, prior_event, prior_reviewer_id,
+        prior_reviewer_session_id, downgrade, approval,
     )
-
-
-def _validate_state(
-    task_id: str,
-    required: bool,
-    triggers: tuple[str, ...],
-    human_elevated: bool,
-    preserved_changes: tuple[ChangeEvidence, ...],
-    prior_event: str | None,
-    downgrade: DowngradeAuthorization | None,
-    approval: SecurityReviewApproval | None,
-) -> None:
-    for change in preserved_changes:
-        validate_change_evidence(change)
-    if not required and (
-        human_elevated
-        or (triggers and downgrade is None)
-        or (downgrade is not None and not triggers)
-    ):
-        raise SecurityReviewError("non-required security state has contradictory risk evidence")
-    if required and downgrade is not None:
-        raise SecurityReviewError("required security state cannot contain a downgrade")
-    if approval is not None and approval.task_id != task_id:
-        raise SecurityReviewError("security approval task mismatch")
-    if approval is not None and not required:
-        raise SecurityReviewError("non-required security state has approval")
-    if (
-        approval is not None
-        and approval.telemetry_event_id == prior_event
-        and not preserved_changes
-    ):
-        raise SecurityReviewError("security review telemetry must be fresh")
+    validate_security_review_state(state)
+    return state
 
 
 def _approval(value: object) -> SecurityReviewApproval | None:

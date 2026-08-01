@@ -171,6 +171,24 @@ def test_changes_requested_security_review_does_not_unlock_code_review(
     with pytest.raises(SecurityReviewError, match="approval"):
         require_code_review_approval(rejected, "b" * 40)
 
+    with pytest.raises(SecurityReviewError, match="already exists"):
+        rejected.record_approval(approval(), telemetry(tmp_path / "same-head"))
+
+    fixed = rejected.for_change_evidence(change("b" * 40, "c" * 40, "README.md"))
+    fresh = fixed.record_approval(
+        approval(
+            reviewed_head="c" * 40,
+            telemetry_event_id="security-event-02",
+            dispatch_id="security-dispatch-02",
+        ),
+        telemetry(
+            tmp_path / "fresh-rereview",
+            event_id="security-event-02",
+            dispatch_id="security-dispatch-02",
+        ),
+    )
+    assert fresh.approval is not None
+
 
 def test_mismatched_security_telemetry_is_rejected(tmp_path: Path) -> None:
     with pytest.raises(SecurityReviewError, match="telemetry"):
