@@ -22,6 +22,7 @@ from scripts.lib.security_review import (  # noqa: E402
     require_code_review_approval,
     validate_change_evidence,
 )
+from scripts.lib.security_review_types import is_sensitive  # noqa: E402
 from scripts.lib.security_review_evidence import (  # noqa: E402
     parse_security_review_state,
     serialize_security_review_state,
@@ -314,6 +315,41 @@ def test_security_control_paths_invalidate_sign_off(
     invalidated = approved.for_change_evidence(change("b" * 40, "c" * 40, path))
 
     assert invalidated.approval is None
+
+
+def test_expected_security_control_inventory_is_sensitive() -> None:
+    expected = (
+        "scripts/lib/security_review.py",
+        "scripts/lib/security_review_evidence.py",
+        "scripts/lib/security_review_git.py",
+        "scripts/lib/security_review_types.py",
+        "scripts/lib/code_review_dispatch.py",
+        "scripts/lib/dispatch_contract.py",
+        "scripts/lib/execution_policy.py",
+        "scripts/lib/review_evidence.py",
+        "scripts/lib/review_workflow.py",
+        "scripts/lib/risk_routing.py",
+        "scripts/lib/software_engineer_dispatch.py",
+        "scripts/lib/spawn_telemetry.py",
+    )
+
+    assert all(is_sensitive(path) for path in expected)
+
+
+@pytest.mark.parametrize(
+    "field", ["prior_telemetry_event_id", "prior_reviewer_id", "prior_reviewer_session_id"]
+)
+def test_durable_watermark_rejects_partial_tampering(
+    tmp_path: Path, field: str
+) -> None:
+    store = telemetry(tmp_path)
+    state = security_state().record_approval(approval(), store)
+    changed = state.for_change_evidence(change("b" * 40, "c" * 40, "README.md"))
+    value = serialize_security_review_state(changed)
+    value[field] = None
+
+    with pytest.raises(SecurityReviewError, match="watermark"):
+        parse_security_review_state(value)
 
 
 def test_security_requirement_preserves_downgrade_record() -> None:

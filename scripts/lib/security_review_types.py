@@ -25,6 +25,8 @@ SENSITIVE_PATH_PREFIXES = (
     "scripts/lib/risk_routing.py",
     "scripts/lib/security_review.py",
     "scripts/lib/security_review_evidence.py",
+    "scripts/lib/security_review_git.py",
+    "scripts/lib/security_review_types.py",
     "scripts/lib/software_engineer_dispatch.py",
     "scripts/lib/spawn_telemetry.py",
 )

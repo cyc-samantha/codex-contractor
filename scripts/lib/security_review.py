@@ -203,10 +203,17 @@ def validate_security_review_state(state: SecurityReviewState) -> None:
         raise SecurityReviewError("non-required security state has approval")
     if state.downgrade is not None:
         validate_downgrade_authorization(state.downgrade)
+    watermark = (
+        state.prior_telemetry_event_id,
+        state.prior_reviewer_id,
+        state.prior_reviewer_session_id,
+    )
+    if any(value is None for value in watermark) and not all(
+        value is None for value in watermark
+    ):
+        raise SecurityReviewError("prior review watermark is incomplete")
     if state.prior_telemetry_event_id is not None:
         _identifier(state.prior_telemetry_event_id, "prior_telemetry_event_id")
-    if (state.prior_reviewer_id is None) != (state.prior_reviewer_session_id is None):
-        raise SecurityReviewError("prior reviewer identity is incomplete")
     if state.prior_reviewer_id is not None:
         _identifier(state.prior_reviewer_id, "prior_reviewer_id")
         _identifier(state.prior_reviewer_session_id, "prior_reviewer_session_id")
