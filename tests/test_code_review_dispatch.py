@@ -174,6 +174,7 @@ def test_security_sign_off_is_required_before_code_review_dispatch(
     with pytest.raises(CodeReviewDispatchError, match="approval"):
         dispatch(
             tmp_path,
+            contract=contract(risk="High Risk"),
             security_review=security_state(task_id="t14-t15-review-loop"),
         )
 
@@ -184,6 +185,7 @@ def test_security_sign_off_is_required_before_code_review_dispatch(
     )
     result, _ = dispatch(
         tmp_path,
+        contract=contract(risk="High Risk"),
         telemetry=store,
         security_review=approved,
     )
@@ -194,6 +196,17 @@ def test_security_sign_off_is_required_before_code_review_dispatch(
 def test_code_review_dispatch_rejects_missing_security_state(tmp_path: Path) -> None:
     with pytest.raises(CodeReviewDispatchError, match="security review state"):
         dispatch(tmp_path, security_review=None)
+
+
+def test_high_risk_dispatch_rejects_non_required_security_state(tmp_path: Path) -> None:
+    with pytest.raises(CodeReviewDispatchError, match="risk"):
+        dispatch(
+            tmp_path,
+            contract=contract(risk="High Risk"),
+            security_review=SecurityReviewState.not_required(
+                "t14-t15-review-loop", "b" * 40
+            ),
+        )
 
 
 def telemetry(

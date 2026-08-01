@@ -13,6 +13,7 @@ from scripts.lib.risk_routing import (
     HIGH_RISK_TRIGGERS,
     DowngradeAuthorization,
     RiskDecision,
+    validate_downgrade_authorization,
 )
 from scripts.lib.spawn_telemetry import SpawnEnvelope, SpawnTelemetryStore
 
@@ -100,6 +101,8 @@ class SecurityReviewState:
         if not isinstance(telemetry, SpawnTelemetryStore):
             raise SecurityReviewError("security telemetry store has invalid type")
         _validate_approval(self, approval)
+        if approval.reviewed_head != self.target_head:
+            raise SecurityReviewError("security approval HEAD mismatch")
         if approval.telemetry_event_id == self.prior_telemetry_event_id:
             raise SecurityReviewError("security review telemetry must be fresh")
         _require_telemetry(approval, telemetry)
@@ -117,10 +120,18 @@ class SecurityReviewState:
                 self, target_head=evidence.new_head, preserved_changes=(),
                 approval=None, prior_telemetry_event_id=prior_event,
             )
+        prior_event = self.approval.telemetry_event_id if self.approval else self.prior_telemetry_event_id
         return replace(
             self, target_head=evidence.new_head,
             preserved_changes=self.preserved_changes + (evidence,),
+            prior_telemetry_event_id=prior_event,
         )
+
+    def for_git_change(
+        self, repository: Path, new_head: str
+    ) -> SecurityReviewState:
+        evidence = collect_git_change_evidence(repository, self.target_head, new_head)
+        return self.for_change_evidence(evidence)
 
 
 def collect_git_change_evidence(
@@ -165,22 +176,36 @@ def validate_change_evidence(evidence: ChangeEvidence) -> None:
 
 
 def require_code_review_approval(
-    state: SecurityReviewState, target_head: str
+    state: SecurityReviewState,
+    target_head: str,
+    repository: Path | None = None,
+    telemetry: SpawnTelemetryStore | None = None,
 ) -> None:
-    if not isinstance(state, SecurityReviewState):
-        raise SecurityReviewError("security review state has invalid type")
+    validate_security_review_state(state)
     _head(target_head, "target_head")
-    if not state.required:
-        return
     if state.target_head != target_head:
         raise SecurityReviewError("security review target HEAD is stale")
+    if not state.required:
+        return
     if state.approval is None or state.approval.verdict != "APPROVE":
         raise SecurityReviewError("security review approval is required")
+    if not isinstance(telemetry, SpawnTelemetryStore):
+        raise SecurityReviewError("security telemetry store is required")
+    _require_telemetry(state.approval, telemetry)
     if state.approval.reviewed_head != target_head:
-        _require_preserved_scope(state)
+        if not isinstance(repository, Path):
+            raise SecurityReviewError("repository probe is required for preserved scope")
+        actual = collect_git_change_evidence(
+            repository, state.approval.reviewed_head, target_head
+        )
+        if any(_is_sensitive(path) for path in actual.changed_paths):
+            raise SecurityReviewError("sensitive changes require fresh security review")
+        _require_preserved_scope(state, actual)
 
 
-def _require_preserved_scope(state: SecurityReviewState) -> None:
+def _require_preserved_scope(
+    state: SecurityReviewState, actual: ChangeEvidence
+) -> None:
     cursor = state.approval.reviewed_head if state.approval else ""
     for evidence in state.preserved_changes:
         validate_change_evidence(evidence)
@@ -189,6 +214,46 @@ def _require_preserved_scope(state: SecurityReviewState) -> None:
         cursor = evidence.new_head
     if cursor != state.target_head:
         raise SecurityReviewError("security approval scope is unproven")
+    expected_paths = tuple(
+        sorted(path for evidence in state.preserved_changes for path in evidence.changed_paths)
+    )
+    if expected_paths != actual.changed_paths:
+        raise SecurityReviewError("security approval scope is unproven")
+
+
+def validate_security_review_state(state: SecurityReviewState) -> None:
+    if not isinstance(state, SecurityReviewState):
+        raise SecurityReviewError("security review state has invalid type")
+    _identifier(state.task_id, "task_id")
+    _head(state.target_head, "target_head")
+    if type(state.required) is not bool or type(state.human_elevated) is not bool:
+        raise SecurityReviewError("security review state flags must be boolean")
+    expected_triggers = tuple(
+        trigger for trigger in HIGH_RISK_TRIGGERS if trigger in state.triggers
+    )
+    if state.triggers != expected_triggers:
+        raise SecurityReviewError("security triggers are not canonical")
+    for evidence in state.preserved_changes:
+        validate_change_evidence(evidence)
+    if not state.required and (
+        state.human_elevated
+        or (state.triggers and state.downgrade is None)
+        or (state.downgrade is not None and not state.triggers)
+    ):
+        raise SecurityReviewError("security routing evidence is contradictory")
+    if state.required and not (state.triggers or state.human_elevated):
+        raise SecurityReviewError("required security state lacks a High Risk reason")
+    if state.required and state.downgrade is not None:
+        raise SecurityReviewError("required security state cannot contain a downgrade")
+    if state.downgrade is not None:
+        validate_downgrade_authorization(state.downgrade)
+    if state.prior_telemetry_event_id is not None:
+        _identifier(state.prior_telemetry_event_id, "prior_telemetry_event_id")
+    if state.approval is not None:
+        _validate_approval(state, state.approval)
+        if state.approval.telemetry_event_id == state.prior_telemetry_event_id:
+            if not state.preserved_changes:
+                raise SecurityReviewError("security review telemetry must be fresh")
 
 
 def _validate_approval(
@@ -199,8 +264,6 @@ def _validate_approval(
     _approval_fields(approval)
     if approval.task_id != state.task_id:
         raise SecurityReviewError("security approval task mismatch")
-    if approval.reviewed_head != state.target_head:
-        raise SecurityReviewError("security approval HEAD mismatch")
 
 
 def _require_telemetry(

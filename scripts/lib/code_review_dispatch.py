@@ -22,6 +22,7 @@ from scripts.lib.security_review import (
     SecurityReviewError,
     SecurityReviewState,
     require_code_review_approval,
+    validate_security_review_state,
 )
 from scripts.lib.spawn_telemetry import (
     SpawnEnvelope,
@@ -84,7 +85,7 @@ def dispatch_code_review(
     security_review: SecurityReviewState,
 ) -> ReviewExecution:
     current_head, worktree_clean = target_probe()
-    _require_security_approval(contract, security_review, current_head)
+    _require_security_approval(contract, security_review, current_head, telemetry)
     _require_reviewable(
         contract, software_engineer_id, software_engineer_session_id,
         current_head, worktree_clean,
@@ -118,13 +119,27 @@ def _require_security_approval(
     contract: DispatchContract,
     security_review: SecurityReviewState,
     target_head: str,
+    telemetry: SpawnTelemetryStore,
 ) -> None:
     if not isinstance(security_review, SecurityReviewState):
         raise CodeReviewDispatchError("security review state is required")
     if security_review.task_id != contract.task_id:
         raise CodeReviewDispatchError("security review task mismatch")
     try:
-        require_code_review_approval(security_review, target_head)
+        validate_security_review_state(security_review)
+    except SecurityReviewError as error:
+        raise CodeReviewDispatchError(str(error)) from error
+    if security_review.required != (contract.risk == "High Risk"):
+        raise CodeReviewDispatchError("security review risk does not match contract")
+    if (
+        security_review.downgrade is not None
+        and security_review.downgrade.target_gear != contract.risk
+    ):
+        raise CodeReviewDispatchError("security downgrade target does not match contract")
+    try:
+        require_code_review_approval(
+            security_review, target_head, contract.repository, telemetry
+        )
     except SecurityReviewError as error:
         raise CodeReviewDispatchError(str(error)) from error
 

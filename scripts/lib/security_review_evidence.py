@@ -111,7 +111,11 @@ def _validate_state(
         raise SecurityReviewError("security approval task mismatch")
     if approval is not None and not required:
         raise SecurityReviewError("non-required security state has approval")
-    if approval is not None and approval.telemetry_event_id == prior_event:
+    if (
+        approval is not None
+        and approval.telemetry_event_id == prior_event
+        and not preserved_changes
+    ):
         raise SecurityReviewError("security review telemetry must be fresh")
 
 
