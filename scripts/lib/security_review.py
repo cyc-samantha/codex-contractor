@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from pathlib import PurePosixPath
+from hashlib import sha256
+from pathlib import Path, PurePosixPath
 import re
+import subprocess
+
 from scripts.lib.risk_routing import (
     HIGH_RISK,
+    HIGH_RISK_TRIGGERS,
     DowngradeAuthorization,
     RiskDecision,
 )
@@ -25,12 +29,23 @@ SENSITIVE_PATH_PREFIXES = (
     "scripts/codex-harness",
     "scripts/lib/code_review_dispatch.py",
     "scripts/lib/dispatch_contract.py",
+    "scripts/lib/execution_policy.py",
     "scripts/lib/review_evidence.py",
     "scripts/lib/review_workflow.py",
     "scripts/lib/risk_routing.py",
     "scripts/lib/security_review.py",
+    "scripts/lib/security_review_evidence.py",
+    "scripts/lib/software_engineer_dispatch.py",
     "scripts/lib/spawn_telemetry.py",
 )
+
+
+@dataclass(frozen=True)
+class ChangeEvidence:
+    base_head: str
+    new_head: str
+    changed_paths: tuple[str, ...]
+    path_digest: str
 
 
 @dataclass(frozen=True)
@@ -54,7 +69,8 @@ class SecurityReviewState:
     triggers: tuple[str, ...]
     human_elevated: bool
     target_head: str
-    non_sensitive_paths: tuple[str, ...]
+    preserved_changes: tuple[ChangeEvidence, ...]
+    prior_telemetry_event_id: str | None
     downgrade: DowngradeAuthorization | None
     approval: SecurityReviewApproval | None
 
@@ -65,16 +81,16 @@ class SecurityReviewState:
         _identifier(task_id, "task_id")
         _head(target_head, "target_head")
         return cls(
-            1,
-            task_id,
-            decision.effective_gear == HIGH_RISK,
-            decision.triggers,
-            decision.human_elevated,
-            target_head,
-            (),
-            decision.downgrade,
-            None,
+            1, task_id, decision.effective_gear == HIGH_RISK,
+            decision.triggers, decision.human_elevated, target_head,
+            (), None, decision.downgrade, None,
         )
+
+    @classmethod
+    def not_required(cls, task_id: str, target_head: str) -> SecurityReviewState:
+        _identifier(task_id, "task_id")
+        _head(target_head, "target_head")
+        return cls(1, task_id, False, (), False, target_head, (), None, None, None)
 
     def record_approval(
         self, approval: SecurityReviewApproval, telemetry: SpawnTelemetryStore
@@ -84,32 +100,75 @@ class SecurityReviewState:
         if not isinstance(telemetry, SpawnTelemetryStore):
             raise SecurityReviewError("security telemetry store has invalid type")
         _validate_approval(self, approval)
+        if approval.telemetry_event_id == self.prior_telemetry_event_id:
+            raise SecurityReviewError("security review telemetry must be fresh")
         _require_telemetry(approval, telemetry)
-        return replace(self, approval=approval, non_sensitive_paths=())
+        return replace(self, approval=approval, preserved_changes=())
 
-    def for_changed_paths(
-        self, changed_paths: list[str] | tuple[str, ...], new_head: str
+    def for_change_evidence(
+        self, evidence: ChangeEvidence
     ) -> SecurityReviewState:
-        _head(new_head, "new_head")
-        if not isinstance(changed_paths, (list, tuple)):
-            raise SecurityReviewError("changed paths must be a list or tuple")
-        normalized = tuple(_safe_path(path) for path in changed_paths)
-        if not normalized:
-            raise SecurityReviewError("changed paths cannot be empty")
-        if self.required and any(_is_sensitive(path) for path in normalized):
+        validate_change_evidence(evidence)
+        if evidence.base_head != self.target_head:
+            raise SecurityReviewError("change evidence base HEAD is stale")
+        if self.required and any(_is_sensitive(path) for path in evidence.changed_paths):
+            prior_event = self.approval.telemetry_event_id if self.approval else self.prior_telemetry_event_id
             return replace(
-                self, target_head=new_head, non_sensitive_paths=(), approval=None
+                self, target_head=evidence.new_head, preserved_changes=(),
+                approval=None, prior_telemetry_event_id=prior_event,
             )
         return replace(
-            self,
-            target_head=new_head,
-            non_sensitive_paths=self.non_sensitive_paths + normalized,
+            self, target_head=evidence.new_head,
+            preserved_changes=self.preserved_changes + (evidence,),
         )
+
+
+def collect_git_change_evidence(
+    repository: Path, base_head: str, new_head: str
+) -> ChangeEvidence:
+    _repository(repository)
+    _head(base_head, "base_head")
+    _head(new_head, "new_head")
+    if base_head == new_head:
+        raise SecurityReviewError("change evidence requires a new HEAD")
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(repository), "diff", "--name-only", "--no-renames", "--no-ext-diff", f"{base_head}..{new_head}"],
+            check=False, capture_output=True, text=True, timeout=10,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise SecurityReviewError("Git change probe failed") from error
+    if result.returncode != 0:
+        raise SecurityReviewError("Git change probe returned an error")
+    paths = tuple(sorted(result.stdout.splitlines()))
+    evidence = ChangeEvidence(base_head, new_head, paths, change_path_digest(paths))
+    validate_change_evidence(evidence)
+    return evidence
+
+
+def change_path_digest(paths: tuple[str, ...]) -> str:
+    return sha256("\n".join(paths).encode("utf-8")).hexdigest()
+
+
+def validate_change_evidence(evidence: ChangeEvidence) -> None:
+    if not isinstance(evidence, ChangeEvidence):
+        raise SecurityReviewError("change evidence has invalid type")
+    _head(evidence.base_head, "base_head")
+    _head(evidence.new_head, "new_head")
+    if evidence.base_head == evidence.new_head or not evidence.changed_paths:
+        raise SecurityReviewError("change evidence is empty or unchanged")
+    paths = tuple(_safe_path(path) for path in evidence.changed_paths)
+    if paths != tuple(sorted(set(paths))):
+        raise SecurityReviewError("change evidence paths are not canonical")
+    if evidence.path_digest != change_path_digest(paths):
+        raise SecurityReviewError("change evidence digest mismatch")
 
 
 def require_code_review_approval(
     state: SecurityReviewState, target_head: str
 ) -> None:
+    if not isinstance(state, SecurityReviewState):
+        raise SecurityReviewError("security review state has invalid type")
     _head(target_head, "target_head")
     if not state.required:
         return
@@ -117,11 +176,19 @@ def require_code_review_approval(
         raise SecurityReviewError("security review target HEAD is stale")
     if state.approval is None or state.approval.verdict != "APPROVE":
         raise SecurityReviewError("security review approval is required")
-    if (
-        state.approval.reviewed_head != target_head
-        and not state.non_sensitive_paths
-    ):
-        raise SecurityReviewError("security review approval scope is unproven")
+    if state.approval.reviewed_head != target_head:
+        _require_preserved_scope(state)
+
+
+def _require_preserved_scope(state: SecurityReviewState) -> None:
+    cursor = state.approval.reviewed_head if state.approval else ""
+    for evidence in state.preserved_changes:
+        validate_change_evidence(evidence)
+        if evidence.base_head != cursor or any(_is_sensitive(path) for path in evidence.changed_paths):
+            raise SecurityReviewError("security approval scope is unproven")
+        cursor = evidence.new_head
+    if cursor != state.target_head:
+        raise SecurityReviewError("security approval scope is unproven")
 
 
 def _validate_approval(
@@ -134,15 +201,11 @@ def _validate_approval(
         raise SecurityReviewError("security approval task mismatch")
     if approval.reviewed_head != state.target_head:
         raise SecurityReviewError("security approval HEAD mismatch")
-    if approval.verdict not in VERDICTS:
-        raise SecurityReviewError("unsupported security verdict")
 
 
 def _require_telemetry(
     approval: SecurityReviewApproval, telemetry: SpawnTelemetryStore
 ) -> None:
-    if not isinstance(telemetry, SpawnTelemetryStore):
-        raise SecurityReviewError("security telemetry store has invalid type")
     matches = tuple(
         event for event in telemetry.read_events()
         if _telemetry_matches(approval, event)
@@ -190,9 +253,14 @@ def _safe_path(value: object) -> str:
 
 def _is_sensitive(path: str) -> bool:
     return any(
-        path == prefix.rstrip("/") or path.startswith(prefix)
+        path == prefix.rstrip("/") or path.startswith(prefix.rstrip("/") + "/")
         for prefix in SENSITIVE_PATH_PREFIXES
     )
+
+
+def _repository(value: object) -> None:
+    if not isinstance(value, Path) or not value.is_absolute() or ".." in value.parts:
+        raise SecurityReviewError("repository must be an absolute path")
 
 
 def _head(value: object, name: str) -> str:

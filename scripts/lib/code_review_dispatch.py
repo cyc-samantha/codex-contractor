@@ -81,10 +81,10 @@ def dispatch_code_review(
     runtime: RuntimePort,
     available_profiles: set[ProfileKey],
     authorized_fallbacks: Mapping[ProfileKey, ProfileKey],
-    security_review: SecurityReviewState | None = None,
+    security_review: SecurityReviewState,
 ) -> ReviewExecution:
     current_head, worktree_clean = target_probe()
-    _require_security_approval(security_review, current_head)
+    _require_security_approval(contract, security_review, current_head)
     _require_reviewable(
         contract, software_engineer_id, software_engineer_session_id,
         current_head, worktree_clean,
@@ -115,10 +115,14 @@ def dispatch_code_review(
 
 
 def _require_security_approval(
-    security_review: SecurityReviewState | None, target_head: str
+    contract: DispatchContract,
+    security_review: SecurityReviewState,
+    target_head: str,
 ) -> None:
-    if security_review is None:
-        return
+    if not isinstance(security_review, SecurityReviewState):
+        raise CodeReviewDispatchError("security review state is required")
+    if security_review.task_id != contract.task_id:
+        raise CodeReviewDispatchError("security review task mismatch")
     try:
         require_code_review_approval(security_review, target_head)
     except SecurityReviewError as error:

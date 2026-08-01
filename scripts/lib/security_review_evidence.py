@@ -11,22 +11,24 @@ from scripts.lib.risk_routing import (
     validate_downgrade_authorization,
 )
 from scripts.lib.security_review import (
+    ChangeEvidence,
     SecurityReviewApproval,
     SecurityReviewError,
     SecurityReviewState,
     _approval_fields,
     _head,
     _identifier,
-    _is_sensitive,
     _safe_path,
     _text,
+    validate_change_evidence,
 )
 
 
 STATE_FIELDS = frozenset(
     {
         "schema_version", "task_id", "required", "triggers", "human_elevated",
-        "target_head", "non_sensitive_paths", "downgrade", "approval",
+        "target_head", "preserved_changes", "prior_telemetry_event_id",
+        "downgrade", "approval",
     }
 )
 APPROVAL_FIELDS = frozenset(
@@ -43,7 +45,15 @@ def serialize_security_review_state(
 ) -> dict[str, Any]:
     value = asdict(state)
     value["triggers"] = list(state.triggers)
-    value["non_sensitive_paths"] = list(state.non_sensitive_paths)
+    value["preserved_changes"] = [
+        {
+            "base_head": change.base_head,
+            "new_head": change.new_head,
+            "changed_paths": list(change.changed_paths),
+            "path_digest": change.path_digest,
+        }
+        for change in state.preserved_changes
+    ]
     if state.downgrade is not None:
         value["downgrade"] = asdict(state.downgrade)
     if state.approval is not None:
@@ -61,16 +71,19 @@ def parse_security_review_state(value: object) -> SecurityReviewState:
     human_elevated = _boolean(fields["human_elevated"], "human_elevated")
     triggers = _triggers(fields["triggers"])
     target_head = _head(fields["target_head"], "target_head")
-    non_sensitive_paths = _paths(fields["non_sensitive_paths"])
+    preserved_changes = _changes(fields["preserved_changes"])
+    prior_event = _optional_identifier(
+        fields["prior_telemetry_event_id"], "prior_telemetry_event_id"
+    )
     downgrade = _downgrade(fields["downgrade"])
     approval = _approval(fields["approval"])
     _validate_state(
-        task_id, required, triggers, human_elevated, non_sensitive_paths,
-        downgrade, approval,
+        task_id, required, triggers, human_elevated, preserved_changes,
+        prior_event, downgrade, approval,
     )
     return SecurityReviewState(
         1, task_id, required, triggers, human_elevated,
-        target_head, non_sensitive_paths, downgrade, approval,
+        target_head, preserved_changes, prior_event, downgrade, approval,
     )
 
 
@@ -79,20 +92,27 @@ def _validate_state(
     required: bool,
     triggers: tuple[str, ...],
     human_elevated: bool,
-    non_sensitive_paths: tuple[str, ...],
+    preserved_changes: tuple[ChangeEvidence, ...],
+    prior_event: str | None,
     downgrade: DowngradeAuthorization | None,
     approval: SecurityReviewApproval | None,
 ) -> None:
-    if any(_is_sensitive(path) for path in non_sensitive_paths):
-        raise SecurityReviewError("security preservation path is sensitive")
+    for change in preserved_changes:
+        validate_change_evidence(change)
     if not required and (
-        triggers or human_elevated or non_sensitive_paths or downgrade or approval
+        human_elevated
+        or (triggers and downgrade is None)
+        or (downgrade is not None and not triggers)
     ):
-        raise SecurityReviewError("non-required security state has risk evidence")
+        raise SecurityReviewError("non-required security state has contradictory risk evidence")
+    if required and downgrade is not None:
+        raise SecurityReviewError("required security state cannot contain a downgrade")
     if approval is not None and approval.task_id != task_id:
         raise SecurityReviewError("security approval task mismatch")
     if approval is not None and not required:
         raise SecurityReviewError("non-required security state has approval")
+    if approval is not None and approval.telemetry_event_id == prior_event:
+        raise SecurityReviewError("security review telemetry must be fresh")
 
 
 def _approval(value: object) -> SecurityReviewApproval | None:
@@ -141,13 +161,35 @@ def _triggers(value: object) -> tuple[str, ...]:
     return ordered
 
 
-def _paths(value: object) -> tuple[str, ...]:
+def _changes(value: object) -> tuple[ChangeEvidence, ...]:
     if not isinstance(value, list):
-        raise SecurityReviewError("non_sensitive_paths must be a list")
-    paths = tuple(_safe_path(path) for path in value)
-    if len(paths) != len(set(paths)):
-        raise SecurityReviewError("non_sensitive_paths must be unique")
-    return paths
+        raise SecurityReviewError("preserved_changes must be a list")
+    changes = tuple(_change(item) for item in value)
+    for change in changes:
+        validate_change_evidence(change)
+    return changes
+
+
+def _change(value: object) -> ChangeEvidence:
+    fields = _mapping(value, "change evidence")
+    _exact_fields(
+        fields,
+        frozenset({"base_head", "new_head", "changed_paths", "path_digest"}),
+        "change evidence",
+    )
+    paths = fields["changed_paths"]
+    if not isinstance(paths, list):
+        raise SecurityReviewError("change evidence paths must be a list")
+    return ChangeEvidence(
+        _head(fields["base_head"], "base_head"),
+        _head(fields["new_head"], "new_head"),
+        tuple(_safe_path(path) for path in paths),
+        _text(fields["path_digest"], "path_digest"),
+    )
+
+
+def _optional_identifier(value: object, name: str) -> str | None:
+    return None if value is None else _identifier(value, name)
 
 
 def _boolean(value: object, name: str) -> bool:

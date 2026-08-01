@@ -13,10 +13,14 @@ from scripts.lib.risk_routing import (  # noqa: E402
     route_risk,
 )
 from scripts.lib.security_review import (  # noqa: E402
+    ChangeEvidence,
     SecurityReviewApproval,
     SecurityReviewError,
     SecurityReviewState,
+    SENSITIVE_PATH_PREFIXES,
+    change_path_digest,
     require_code_review_approval,
+    validate_change_evidence,
 )
 from scripts.lib.security_review_evidence import (  # noqa: E402
     parse_security_review_state,
@@ -35,12 +39,14 @@ def signals(**overrides: bool) -> dict[str, bool]:
     return values
 
 
-def security_state(required: bool = True) -> SecurityReviewState:
+def security_state(
+    required: bool = True, task_id: str = "t17-security-signoff"
+) -> SecurityReviewState:
     decision = route_risk(
         "Build",
         signals(**{HIGH_RISK_TRIGGERS[0]: required}),
     )
-    return SecurityReviewState.from_risk_decision("t17-security-signoff", decision, "b" * 40)
+    return SecurityReviewState.from_risk_decision(task_id, decision, "b" * 40)
 
 
 def approval(**overrides: object) -> SecurityReviewApproval:
@@ -57,6 +63,11 @@ def approval(**overrides: object) -> SecurityReviewApproval:
     }
     values.update(overrides)
     return SecurityReviewApproval(**values)
+
+
+def change(base_head: str, new_head: str, *paths: str) -> ChangeEvidence:
+    normalized = tuple(sorted(paths))
+    return ChangeEvidence(base_head, new_head, normalized, change_path_digest(normalized))
 
 
 def telemetry(tmp_path: Path, **overrides: object) -> SpawnTelemetryStore:
@@ -170,7 +181,9 @@ def test_mismatched_security_telemetry_is_rejected(tmp_path: Path) -> None:
 def test_sensitive_fix_invalidates_security_sign_off(tmp_path: Path) -> None:
     state = security_state().record_approval(approval(), telemetry(tmp_path))
 
-    invalidated = state.for_changed_paths(["scripts/lib/review_workflow.py"], "c" * 40)
+    invalidated = state.for_change_evidence(
+        change("b" * 40, "c" * 40, "scripts/lib/review_workflow.py")
+    )
 
     assert invalidated.target_head == "c" * 40
     assert invalidated.approval is None
@@ -178,15 +191,10 @@ def test_sensitive_fix_invalidates_security_sign_off(tmp_path: Path) -> None:
         require_code_review_approval(invalidated, "c" * 40)
 
 
-def test_changed_paths_reject_traversal() -> None:
-    with pytest.raises(SecurityReviewError, match="repository-relative"):
-        security_state().for_changed_paths(["../scripts/lib/risk_routing.py"], "c" * 40)
-
-
 def test_non_sensitive_fix_preserves_security_sign_off(tmp_path: Path) -> None:
     state = security_state().record_approval(approval(), telemetry(tmp_path))
 
-    updated = state.for_changed_paths(["README.md"], "c" * 40)
+    updated = state.for_change_evidence(change("b" * 40, "c" * 40, "README.md"))
 
     assert updated.approval == state.approval
     require_code_review_approval(updated, "c" * 40)
@@ -203,11 +211,83 @@ def test_serialized_state_rejects_unproven_approval_scope(tmp_path: Path) -> Non
         require_code_review_approval(parsed, "c" * 40)
 
 
+def test_change_evidence_rejects_tampered_digest_and_traversal() -> None:
+    with pytest.raises(SecurityReviewError, match="digest"):
+        validate_change_evidence(
+            ChangeEvidence("b" * 40, "c" * 40, ("README.md",), "0" * 64)
+        )
+    with pytest.raises(SecurityReviewError, match="repository-relative"):
+        validate_change_evidence(
+            change("b" * 40, "c" * 40, "../scripts/lib/risk_routing.py")
+        )
+
+
 def test_security_dispatch_requires_matching_durable_telemetry(tmp_path: Path) -> None:
     state = security_state()
 
     with pytest.raises(SecurityReviewError, match="telemetry"):
         state.record_approval(approval(), SpawnTelemetryStore(tmp_path / "missing.jsonl"))
+
+
+def test_sensitive_invalidation_requires_fresh_security_telemetry(
+    tmp_path: Path,
+) -> None:
+    approved = security_state().record_approval(approval(), telemetry(tmp_path))
+    invalidated = approved.for_change_evidence(
+        change("b" * 40, "c" * 40, "scripts/lib/review_workflow.py")
+    )
+
+    with pytest.raises(SecurityReviewError, match="fresh"):
+        invalidated.record_approval(
+            approval(reviewed_head="c" * 40), telemetry(tmp_path / "stale")
+        )
+
+    fresh_store = telemetry(
+        tmp_path / "fresh",
+        event_id="security-event-02",
+        dispatch_id="security-dispatch-02",
+    )
+    fresh = invalidated.record_approval(
+        approval(
+            reviewed_head="c" * 40,
+            dispatch_id="security-dispatch-02",
+            telemetry_event_id="security-event-02",
+        ),
+        fresh_store,
+    )
+    assert fresh.approval is not None
+
+
+def test_downgrade_evidence_round_trips_durably() -> None:
+    authorization = DowngradeAuthorization(
+        "human", "Build", "approved exception", "auth-17"
+    )
+    decision = route_risk(
+        "Build",
+        signals(**{HIGH_RISK_TRIGGERS[0]: True}),
+        downgrade=authorization,
+    )
+    state = SecurityReviewState.from_risk_decision(
+        "t17-security-signoff", decision, "b" * 40
+    )
+
+    parsed = parse_security_review_state(serialize_security_review_state(state))
+
+    assert parsed.required is False
+    assert parsed.triggers == (HIGH_RISK_TRIGGERS[0],)
+    assert parsed.downgrade == authorization
+
+
+@pytest.mark.parametrize("prefix", SENSITIVE_PATH_PREFIXES)
+def test_security_control_paths_invalidate_sign_off(
+    tmp_path: Path, prefix: str
+) -> None:
+    approved = security_state().record_approval(approval(), telemetry(tmp_path))
+    path = prefix.rstrip("/") + "/changed.py"
+
+    invalidated = approved.for_change_evidence(change("b" * 40, "c" * 40, path))
+
+    assert invalidated.approval is None
 
 
 def test_security_requirement_preserves_downgrade_record() -> None:
