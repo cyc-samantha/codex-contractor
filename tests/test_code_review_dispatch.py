@@ -14,12 +14,14 @@ from scripts.lib.code_review_dispatch import (  # noqa: E402
 )
 from scripts.lib.dispatch_contract import parse_dispatch_contract  # noqa: E402
 from scripts.lib.review_evidence import parse_review_evidence  # noqa: E402
+from scripts.lib.security_review import SecurityReviewState  # noqa: E402
 from scripts.lib.spawn_telemetry import (  # noqa: E402
     SpawnEnvelope,
     SpawnTelemetryStore,
     TokenMetric,
 )
 from tests.test_review_evidence import evidence  # noqa: E402
+from tests.test_security_ordering import approval, security_state  # noqa: E402
 
 
 def contract(**overrides: object):
@@ -96,6 +98,9 @@ def dispatch(tmp_path: Path, **overrides: object):
         "runtime": lambda _contract, _profile, binding: execution(binding),
         "available_profiles": {("gpt-5.6-sol", "medium")},
         "authorized_fallbacks": {},
+        "security_review": SecurityReviewState.not_required(
+            "t14-t15-review-loop", "b" * 40
+        ),
     }
     values.update(overrides)
     return dispatch_code_review(**values), values["telemetry"]
@@ -161,3 +166,79 @@ def test_rejects_post_review_repository_mutation_before_telemetry(
         dispatch(tmp_path, target_probe=lambda: next(states), telemetry=store)
 
     assert tuple(event.role for event in store.read_events()) == ("software_engineer",)
+
+
+def test_security_sign_off_is_required_before_code_review_dispatch(
+    tmp_path: Path,
+) -> None:
+    with pytest.raises(CodeReviewDispatchError, match="approval"):
+        dispatch(
+            tmp_path,
+            contract=contract(risk="High Risk"),
+            security_review=security_state(task_id="t14-t15-review-loop"),
+        )
+
+    store = SpawnTelemetryStore(tmp_path / "approved-events.jsonl")
+    approved = security_state(task_id="t14-t15-review-loop").record_approval(
+        approval(task_id="t14-t15-review-loop"),
+        telemetry(store, task_id="t14-t15-review-loop"),
+    )
+    result, _ = dispatch(
+        tmp_path,
+        contract=contract(risk="High Risk"),
+        telemetry=store,
+        security_review=approved,
+    )
+
+    assert result.evidence.verdict == "CHANGES_REQUESTED"
+
+
+def test_code_review_dispatch_rejects_missing_security_state(tmp_path: Path) -> None:
+    with pytest.raises(CodeReviewDispatchError, match="security review state"):
+        dispatch(tmp_path, security_review=None)
+
+
+def test_high_risk_dispatch_rejects_non_required_security_state(tmp_path: Path) -> None:
+    with pytest.raises(CodeReviewDispatchError, match="risk"):
+        dispatch(
+            tmp_path,
+            contract=contract(risk="High Risk"),
+            security_review=SecurityReviewState.not_required(
+                "t14-t15-review-loop", "b" * 40
+            ),
+        )
+
+
+def test_code_review_dispatch_rejects_security_approval_from_another_run(
+    tmp_path: Path,
+) -> None:
+    store = SpawnTelemetryStore(tmp_path / "security-events.jsonl")
+    approved = security_state(task_id="t14-t15-review-loop").record_approval(
+        approval(task_id="t14-t15-review-loop", run_id="run-other"),
+        telemetry(store, task_id="t14-t15-review-loop", run_id="run-other"),
+    )
+
+    with pytest.raises(CodeReviewDispatchError, match="run"):
+        dispatch(
+            tmp_path,
+            contract=contract(risk="High Risk"),
+            telemetry=store,
+            security_review=approved,
+        )
+
+
+def telemetry(
+    store: SpawnTelemetryStore,
+    task_id: str = "t17-security-signoff",
+    run_id: str = "run-01",
+) -> SpawnTelemetryStore:
+    store.record(
+        SpawnEnvelope(
+            1, "security-event-01", task_id, run_id,
+            "security-dispatch-01", "security_reviewer", "security_reviewer-01",
+            "session-security_reviewer-01", None, "gpt-5.6-sol", "gpt-5.6-sol",
+            "medium", "medium", TokenMetric(10, None), TokenMetric(0, None),
+            TokenMetric(5, None), 100, "initial",
+        )
+    )
+    return store

@@ -817,8 +817,8 @@ quality gate or weakening its fail-closed behavior.
 | T13B-T13D | Complete | Emit and aggregate the shared minimal envelope, resolve deterministic model-effort allocation with fail-closed fallback, and dispatch the Software Engineer only after correlated telemetry is durably proven; merged in PR #33 with T13A activation mechanically disabled | T13 |
 | T14 | Complete | Add fresh read-only code review bound to task and HEAD with required shared-envelope coverage; bundled with T15 in PR #36 | T13B-T13D, T13A |
 | T15 | Complete | Return findings to the bound engineer and targeted re-review to the bound raising reviewer, with shared-envelope coverage for each spawn; bundled with T14 in PR #36 | T14, T13B-T13D |
-| T16 | In review | Add deterministic High Risk trigger routing and human-authorized downgrade enforcement in `scripts/lib/risk_routing.py`, with fail-closed contract tests | T04 |
-| T17 | Planned | Add security-first review, re-review, sign-off, invalidation, and required shared-envelope coverage | T13B-T13D, T15, T16 |
+| T16 | Complete | Add deterministic High Risk trigger routing and human-authorized downgrade enforcement in `scripts/lib/risk_routing.py`, with fail-closed contract tests; merged in PR #37 | T04 |
+| T17 | In review | Add security-first review, re-review, sign-off, invalidation, and required shared-envelope coverage | T13B-T13D, T15, T16 |
 | T18 | Planned | Write verification evidence bound to reviewed HEAD | T15 |
 | T18A | Planned | Dispatch the deterministic verifier read-only only after its shared envelope proves actual provider tokens or null-with-reason | T13B-T13D, T18 |
 | T18B | Planned | Replace the Claude-specific Tier 3.5 call with a fresh read-only Codex LLM-mutant adapter, activated only after telemetry gates pass | T13B-T13D, T18 |
