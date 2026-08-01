@@ -148,7 +148,11 @@ def test_required_security_approval_precedes_code_review(tmp_path: Path) -> None
 
     store = telemetry(tmp_path)
     approved = state.record_approval(approval(), store)
-    require_code_review_approval(approved, "b" * 40, telemetry=store)
+    require_code_review_approval(
+        approved, "b" * 40, telemetry=store, run_id="run-01"
+    )
+    with pytest.raises(SecurityReviewError, match="run is required"):
+        require_code_review_approval(approved, "b" * 40, telemetry=store)
 
 
 def test_non_security_review_does_not_require_security_approval() -> None:
@@ -219,7 +223,9 @@ def test_non_sensitive_fix_preserves_security_sign_off(tmp_path: Path) -> None:
 
     assert updated.approval == state.approval
     with pytest.raises(SecurityReviewError, match="repository probe"):
-        require_code_review_approval(updated, "c" * 40, telemetry=store)
+        require_code_review_approval(
+            updated, "c" * 40, telemetry=store, run_id="run-01"
+        )
 
 
 def test_serialized_state_rejects_unproven_approval_scope(tmp_path: Path) -> None:
@@ -235,6 +241,7 @@ def test_serialized_state_rejects_unproven_approval_scope(tmp_path: Path) -> Non
             "c" * 40,
             repository=tmp_path,
             telemetry=telemetry(tmp_path / "check"),
+            run_id="run-01",
         )
 
 

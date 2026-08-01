@@ -144,7 +144,10 @@ def require_code_review_approval(
         return
     if state.approval is None or state.approval.verdict != "APPROVE":
         raise SecurityReviewError("security review approval is required")
-    if run_id is not None and state.approval.run_id != run_id:
+    if run_id is None:
+        raise SecurityReviewError("security review run is required")
+    _identifier(run_id, "run_id")
+    if state.approval.run_id != run_id:
         raise SecurityReviewError("security review run mismatch")
     if not isinstance(telemetry, SpawnTelemetryStore):
         raise SecurityReviewError("security telemetry store is required")
