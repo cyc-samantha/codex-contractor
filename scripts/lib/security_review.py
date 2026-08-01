@@ -134,6 +134,7 @@ def require_code_review_approval(
     target_head: str,
     repository: Path | None = None,
     telemetry: SpawnTelemetryStore | None = None,
+    run_id: str | None = None,
 ) -> None:
     validate_security_review_state(state)
     _head(target_head, "target_head")
@@ -143,6 +144,8 @@ def require_code_review_approval(
         return
     if state.approval is None or state.approval.verdict != "APPROVE":
         raise SecurityReviewError("security review approval is required")
+    if run_id is not None and state.approval.run_id != run_id:
+        raise SecurityReviewError("security review run mismatch")
     if not isinstance(telemetry, SpawnTelemetryStore):
         raise SecurityReviewError("security telemetry store is required")
     _require_telemetry(state.approval, telemetry)

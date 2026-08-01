@@ -209,12 +209,32 @@ def test_high_risk_dispatch_rejects_non_required_security_state(tmp_path: Path) 
         )
 
 
+def test_code_review_dispatch_rejects_security_approval_from_another_run(
+    tmp_path: Path,
+) -> None:
+    store = SpawnTelemetryStore(tmp_path / "security-events.jsonl")
+    approved = security_state(task_id="t14-t15-review-loop").record_approval(
+        approval(task_id="t14-t15-review-loop", run_id="run-other"),
+        telemetry(store, task_id="t14-t15-review-loop", run_id="run-other"),
+    )
+
+    with pytest.raises(CodeReviewDispatchError, match="run"):
+        dispatch(
+            tmp_path,
+            contract=contract(risk="High Risk"),
+            telemetry=store,
+            security_review=approved,
+        )
+
+
 def telemetry(
-    store: SpawnTelemetryStore, task_id: str = "t17-security-signoff"
+    store: SpawnTelemetryStore,
+    task_id: str = "t17-security-signoff",
+    run_id: str = "run-01",
 ) -> SpawnTelemetryStore:
     store.record(
         SpawnEnvelope(
-            1, "security-event-01", task_id, "run-01",
+            1, "security-event-01", task_id, run_id,
             "security-dispatch-01", "security_reviewer", "security_reviewer-01",
             "session-security_reviewer-01", None, "gpt-5.6-sol", "gpt-5.6-sol",
             "medium", "medium", TokenMetric(10, None), TokenMetric(0, None),

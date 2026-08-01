@@ -85,7 +85,9 @@ def dispatch_code_review(
     security_review: SecurityReviewState,
 ) -> ReviewExecution:
     current_head, worktree_clean = target_probe()
-    _require_security_approval(contract, security_review, current_head, telemetry)
+    _require_security_approval(
+        contract, security_review, current_head, run_id, telemetry
+    )
     _require_reviewable(
         contract, software_engineer_id, software_engineer_session_id,
         current_head, worktree_clean,
@@ -119,6 +121,7 @@ def _require_security_approval(
     contract: DispatchContract,
     security_review: SecurityReviewState,
     target_head: str,
+    run_id: str,
     telemetry: SpawnTelemetryStore,
 ) -> None:
     if not isinstance(security_review, SecurityReviewState):
@@ -138,7 +141,7 @@ def _require_security_approval(
         raise CodeReviewDispatchError("security downgrade target does not match contract")
     try:
         require_code_review_approval(
-            security_review, target_head, contract.repository, telemetry
+            security_review, target_head, contract.repository, telemetry, run_id
         )
     except SecurityReviewError as error:
         raise CodeReviewDispatchError(str(error)) from error
