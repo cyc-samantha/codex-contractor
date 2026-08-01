@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com).
 
 ### Added
 
+- Add deterministic High Risk trigger routing with auditable human-authorized downgrade decisions
 - Add an identity- and model-bound read-only Code Reviewer dispatch and targeted re-review loop with fresh telemetry evidence
 - Add an orchestrator protected-write boundary whose Software Engineer dispatch capability is issued only after a correlated telemetry canary and activation record are durably read back
 - Add an inactive telemetry-gated Software Engineer dispatch facade with deterministic execution profiles and durable spawn accounting, pending the T13A activation prerequisite
