@@ -59,8 +59,7 @@ class VerificationEvidence:
 def parse_verification_evidence(value: object) -> VerificationEvidence:
     fields = _mapping(value, "verification evidence")
     _exact_fields(fields, EVIDENCE_FIELDS, "verification evidence")
-    if fields["schema_version"] != 1:
-        raise VerificationEvidenceError("unsupported schema_version")
+    _require_schema_version(fields["schema_version"])
     evidence = _build_evidence(fields)
     _validate_verdict(evidence)
     return evidence
@@ -75,14 +74,8 @@ def serialize_verification_evidence(
 
 
 def _build_evidence(fields: dict[str, Any]) -> VerificationEvidence:
-    return VerificationEvidence(
-        1, _identifier(fields["task_id"], "task_id"),
-        _head(fields["git_head"], "git_head"),
-        _timestamp(fields["generated_at"]),
-        _choice(fields["verdict"], VERDICTS, "verdict"),
-        _tier_results(fields["tier_results"]),
-        _boolean(fields["sandbox_run"], "sandbox_run"),
-    )
+    values = (1, _identifier(fields["task_id"], "task_id"), _head(fields["git_head"], "git_head"), _timestamp(fields["generated_at"]), _choice(fields["verdict"], VERDICTS, "verdict"), _tier_results(fields["tier_results"]), _boolean(fields["sandbox_run"], "sandbox_run"))
+    return VerificationEvidence(*values)
 
 
 def write_verification_evidence(
@@ -142,7 +135,7 @@ def _validated_read(
 ) -> VerificationEvidence:
     context = (review_head, current_head, worktree_clean)
     if all(value is None for value in context):
-        return evidence
+        raise VerificationEvidenceError("freshness context is required")
     if any(value is None for value in context):
         raise VerificationEvidenceError("freshness context is incomplete")
     return validate_verification_freshness(
@@ -170,13 +163,18 @@ def _require_freshness(
 
 
 def _read_value(parent: int, name: str) -> dict[str, Any]:
+    descriptor = _open_regular(parent, name)
+    return _load_json(descriptor)
+
+
+def _open_regular(parent: int, name: str) -> int:
     try:
         descriptor = open_optional_regular(parent, name)
-        if descriptor is None:
-            raise VerificationEvidenceError("verification evidence is missing")
-        return _load_json(descriptor)
     except OSError as error:
         raise VerificationEvidenceError("verification evidence target must be regular") from error
+    if descriptor is None:
+        raise VerificationEvidenceError("verification evidence is missing")
+    return descriptor
 
 
 def _load_json(descriptor: int) -> dict[str, Any]:
@@ -191,12 +189,16 @@ def _load_json(descriptor: int) -> dict[str, Any]:
 def _atomic_write(path: Path, value: dict[str, Any]) -> None:
     parent, name = _open_target_parent(path)
     try:
-        _reject_nonregular_target(parent, name)
-        write_json(parent, name, value)
+        _write_atomic_value(parent, name, value)
     except OSError as error:
         raise VerificationEvidenceError("verification evidence atomic write failed") from error
     finally:
         os.close(parent)
+
+
+def _write_atomic_value(parent: int, name: str, value: dict[str, Any]) -> None:
+    _reject_nonregular_target(parent, name)
+    write_json(parent, name, value)
 
 
 def _open_target_parent(path: Path) -> tuple[int, str]:
@@ -304,13 +306,22 @@ def _head(value: object, name: str) -> str:
 
 def _timestamp(value: object) -> str:
     text = _text(value, "generated_at")
-    try:
-        parsed = datetime.fromisoformat(text)
-    except ValueError as error:
-        raise VerificationEvidenceError("generated_at must be ISO-8601") from error
+    parsed = _parse_timestamp(text)
     if parsed.tzinfo is None:
         raise VerificationEvidenceError("generated_at must include timezone")
     return text
+
+
+def _parse_timestamp(text: str) -> datetime:
+    try:
+        return datetime.fromisoformat(text)
+    except ValueError as error:
+        raise VerificationEvidenceError("generated_at must be ISO-8601") from error
+
+
+def _require_schema_version(value: object) -> None:
+    if type(value) is not int or value != 1:
+        raise VerificationEvidenceError("unsupported schema_version")
 
 
 def _text(value: object, name: str) -> str:

@@ -43,6 +43,7 @@ def test_verification_evidence_round_trips_required_fields() -> None:
     [
         {"task_id": ""},
         {"schema_version": 2},
+        {"schema_version": True},
         {"verdict": "UNKNOWN"},
         {"tier_results": {}},
         {"extra": True},
@@ -145,7 +146,7 @@ def test_context_bound_read_requires_fresh_heads_and_clean_worktree(tmp_path: Pa
         worktree_clean=True,
     ) == parsed
     with pytest.raises(VerificationEvidenceError, match="freshness"):
-        read_verification_evidence(target, review_head="b" * 40)
+        read_verification_evidence(target)
 
 
 def test_canonical_fixture_remains_compatible() -> None:

@@ -71,25 +71,57 @@ def dispatch_verifier(
     review_head: str,
     target_probe: TargetProbe,
 ) -> VerifierExecution:
-    validated = _validated_target(contract, review_head, target_probe())
+    validated, profile, binding = _prepare_dispatch(
+        contract, review_head, target_probe(), work_type, available_profiles,
+        authorized_fallbacks, run_id, event_id, telemetry,
+    )
+    execution = _run_runtime(runtime, validated, profile, binding)
+    _require_unchanged_target(validated, target_probe())
+    return _finish_dispatch(telemetry, profile, binding, execution, retry_cycle_id)
+
+
+def _prepare_dispatch(
+    contract: DispatchContract,
+    review_head: str,
+    target_state: tuple[str, bool],
+    work_type: str,
+    available_profiles: set[ProfileKey],
+    authorized_fallbacks: Mapping[ProfileKey, ProfileKey],
+    run_id: str,
+    event_id: str,
+    telemetry: SpawnTelemetryStore,
+) -> tuple[DispatchContract, ExecutionProfile, VerifierDispatchBinding]:
+    validated = _validated_target(contract, review_head, target_state)
     profile = _resolve_profile(validated, work_type, available_profiles, authorized_fallbacks)
     binding = _binding(validated, run_id, event_id)
     _reject_existing_event(telemetry, event_id)
-    execution = _run_runtime(runtime, validated, profile, binding)
-    _require_unchanged_target(validated, target_probe())
+    return validated, profile, binding
+
+
+def _finish_dispatch(
+    telemetry: SpawnTelemetryStore,
+    profile: ExecutionProfile,
+    binding: VerifierDispatchBinding,
+    execution: VerifierExecution,
+    retry_cycle_id: str,
+) -> VerifierExecution:
     _validate_execution(binding, profile, execution)
     _record_telemetry(telemetry, _envelope(profile, execution, retry_cycle_id))
     return execution
 
 
 def _validate_contract(contract: DispatchContract) -> DispatchContract:
-    try:
-        validated = parse_dispatch_contract(serialize_dispatch_contract(contract))
-    except (TypeError, ValueError) as error:
-        raise VerifierDispatchError(f"verifier contract is not trusted: {error}") from error
+    validated = _parse_contract(contract)
     _require_verifier_role(validated)
     _require_read_only_permissions(validated)
     return validated
+
+
+def _parse_contract(contract: DispatchContract) -> DispatchContract:
+    try:
+        return parse_dispatch_contract(serialize_dispatch_contract(contract))
+    except (TypeError, ValueError) as error:
+        raise VerifierDispatchError(f"verifier contract is not trusted: {error}") from error
 
 
 def _validated_target(
