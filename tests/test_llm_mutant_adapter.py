@@ -454,9 +454,12 @@ def test_accepts_exact_survivor_record_and_payload_caps(tmp_path: Path) -> None:
         for index in range(1, 101)
     ]
     records[9] = record
+    index = 0
     while len(json.dumps(records, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")) < 64 * 1024:
-        index = len(records) % 100
+        if index == 9:
+            index = 10
         records[index]["rationale"] += "x"
+        index = (index + 1) % 100
     assert len(json.dumps(records, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")) == 64 * 1024
     result = run_adapter(
         tmp_path,
