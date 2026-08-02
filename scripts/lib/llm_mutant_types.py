@@ -12,6 +12,14 @@ class LlmMutantAdapterError(ValueError):
     """Raised when bounded mutation input or output cannot be trusted."""
 
 
+class LlmMutantSkip(RuntimeError):
+    """Raised when one provider call cannot produce an accepted batch."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
 LLM_MUTANT_CATEGORIES = frozenset(
     {
         "off-by-one",
@@ -36,9 +44,9 @@ EQUIVALENCE = frozenset({"yes", "no", "unsure"})
 
 @dataclass(frozen=True)
 class AdapterActivation:
-    enabled: bool
-    rollout_prerequisites_met: bool
-    telemetry_canary: Callable[[], bool]
+    enabled: bool = False
+    prerequisite_verdict: str = "T13B-D-not-landed"
+    canary_event_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -46,6 +54,8 @@ class LlmMutantCall:
     adapter_version: int
     task_id: str
     reviewed_head: str
+    requested_model: str
+    requested_reasoning_effort: str
     diff: str
     diff_digest: str
     survivor_records: tuple[Mapping[str, Any], ...]

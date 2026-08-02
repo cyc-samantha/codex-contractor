@@ -125,7 +125,7 @@ The manual fallback is approved as a gate-passing methodology — but the >= 70%
 
 **Mutant generation (ONE read-only Codex adapter call per slice — NO retry):**
 
-1. Invoke `scripts/lib/llm_mutant_adapter.py` through one fresh, tool-free, network-free Codex runtime with the changed-line diff, the 5 operator categories above, and the **latest Kill-Loop round's** survivor list (for dedup — or the Tier-3 baseline if no Kill-Loop rounds exist). Request 5–10 mutants — fewer is acceptable, more must be truncated to 10. The adapter reconstructs and digests the canonical diff from the bound repository identity and reviewed HEAD; caller-supplied diff text is untrusted and must match the reconstructed digest.
+1. Invoke `scripts/lib/llm_mutant_adapter.py` through one fresh, tool-free, network-free Codex runtime with the changed-line diff, the 5 operator categories above, and the **latest Kill-Loop round's** survivor list (for dedup — or the Tier-3 baseline if no Kill-Loop rounds exist). Request 5–10 mutants — fewer is acceptable; the strict schema rejects more than 10. The adapter reconstructs and digests the canonical diff from the bound repository identity and reviewed HEAD; caller-supplied diff text is untrusted and must match the reconstructed digest.
 2. Each mutant in the response carries the schema:
    ```
    {

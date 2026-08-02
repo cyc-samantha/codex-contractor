@@ -5,9 +5,9 @@ from __future__ import annotations
 import json
 from pathlib import PurePosixPath
 import re
-from typing import Any
+from typing import Any, Mapping
 
-from .llm_mutant_types import LlmMutantAdapterError
+from .llm_mutant_types import LlmMutantAdapterError, SemanticMutant
 
 
 LINE_RANGE = re.compile(r"^[1-9][0-9]*(?:-[1-9][0-9]*)?$")
@@ -75,3 +75,23 @@ def bounded_json(value: object, maximum: int, name: str) -> None:
         raise LlmMutantAdapterError(f"{name} is not serializable") from error
     if len(encoded) > maximum:
         raise LlmMutantAdapterError(f"{name} exceeds cap")
+
+
+def range_in_locations(value: str, locations: set[int]) -> bool:
+    bounds = [int(item) for item in value.split("-")]
+    return all(number in locations for number in range(bounds[0], bounds[-1] + 1))
+
+
+def record_key(value: Mapping[str, Any]) -> tuple[str, str, str, str, str]:
+    return (
+        safe_file(value["file"]), value["line_range"], value["original"],
+        value["mutated"], value["category"],
+    )
+
+
+def mutation_keys(records: tuple[Mapping[str, Any], ...]) -> set[tuple[str, str, str, str, str]]:
+    return {record_key(record) for record in records}
+
+
+def mutation_key(value: SemanticMutant) -> tuple[str, str, str, str, str]:
+    return (value.file, value.line_range, value.original, value.mutated, value.category)

@@ -4,11 +4,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from hashlib import sha256
-import fnmatch
+import subprocess
 from typing import Any, Mapping
 
 from .dispatch_contract import DispatchContract
-from .spawn_telemetry import SpawnTelemetryStore, TokenMetric
+from .spawn_telemetry import (
+    SpawnTelemetryError,
+    SpawnTelemetryStore,
+    TokenMetric,
+)
 from .verifier_dispatch import (
     VerifierDispatchBinding,
     VerifierDispatchError,
@@ -19,36 +23,34 @@ from .llm_mutant_types import (
     AdapterActivation,
     CanonicalDiffReader,
     CodexInvoker,
-    EQUIVALENCE,
     LLM_MUTANT_CATEGORIES,
     MAX_DIFF_BYTES,
     MAX_DURATION_MS,
-    MAX_OUTPUT_BYTES,
-    MAX_OUTPUT_TOKENS,
-    MAX_SURVIVOR_BYTES,
-    MAX_SURVIVOR_PAYLOAD_BYTES,
-    MAX_SURVIVORS,
-    MUTANT_FIELDS,
     LlmMutantCall,
     LlmMutantResponse,
     LlmMutantResult,
+    LlmMutantSkip,
     SemanticMutant,
     TargetProbe,
     LlmMutantAdapterError,
 )
-from .llm_mutant_validation import (
-    bounded_json,
-    bounded_text,
-    choice,
-    line_range,
-    normalized_text,
-    safe_file,
-    snippet,
-)
+from .llm_mutant_git import canonical_diff, target_probe as git_target_probe
+from .llm_mutant_runtime import NativeCodexRuntime
+from .llm_mutant_schema import validate_response, validate_survivors
+from .llm_mutant_validation import bounded_text
 
 
-class _LlmMutantSkip(RuntimeError):
-    """Raised internally when the provider cannot produce an accepted batch."""
+@dataclass(frozen=True)
+class _CanonicalDiff:
+    text: str
+    digest: str
+
+
+@dataclass(frozen=True)
+class _AdapterPayload:
+    status: str
+    mutants: tuple[SemanticMutant, ...]
+    reason: str | None
 
 
 def generate_llm_mutants(
@@ -59,10 +61,10 @@ def generate_llm_mutants(
     retry_cycle_id: str,
     work_type: str,
     telemetry: SpawnTelemetryStore,
-    canonical_diff_reader: CanonicalDiffReader,
+    canonical_diff_reader: CanonicalDiffReader | None,
     survivor_records: tuple[Mapping[str, Any], ...],
     supplied_diff: str | None,
-    invoke: CodexInvoker,
+    invoke: CodexInvoker | None,
     available_profiles: set[tuple[str, str]],
     authorized_fallbacks: Mapping[tuple[str, str], tuple[str, str]],
     activation: AdapterActivation | None = None,
@@ -73,34 +75,33 @@ def generate_llm_mutants(
     _validate_identity(contract, reviewed_head, engineer_role_instance_id, engineer_session_id)
     if activation is None or not activation.enabled:
         return _skip("activation-disabled", "")
-    if not activation.rollout_prerequisites_met:
-        return _skip("rollout-prerequisites-unmet", "")
-    canonical = _canonical_diff(contract, reviewed_head, supplied_diff, canonical_diff_reader)
-    survivors = _validate_survivors(survivor_records)
-    probe = target_probe or (lambda: (reviewed_head, True))
+    if activation.prerequisite_verdict != "T13B-D-ready":
+        return _skip("activation-prerequisite-unavailable", "")
+    if not activation.canary_event_id or not _has_rollout_canary(
+        telemetry, contract.task_id, run_id, activation.canary_event_id
+    ):
+        return _skip("telemetry-canary-unavailable", "")
+    reader = canonical_diff_reader or canonical_diff
+    runtime = invoke or NativeCodexRuntime()
+    canonical = _canonical_diff(contract, reviewed_head, supplied_diff, reader)
+    survivors = validate_survivors(survivor_records)
+    probe = target_probe or (lambda: git_target_probe(contract.repository))
     _require_target(probe(), reviewed_head)
     try:
         execution = _dispatch_once(
             contract, reviewed_head, run_id, event_id, retry_cycle_id, work_type,
-            telemetry, canonical, survivors, invoke, available_profiles,
+            telemetry, canonical, survivors, runtime, available_profiles,
             authorized_fallbacks, probe,
         )
     except VerifierDispatchError as error:
         cause = error.__cause__
         if isinstance(cause, LlmMutantAdapterError):
             raise cause
-        return _skip("runtime-unavailable", canonical.digest)
-    except (_LlmMutantSkip, TimeoutError):
-        return _skip("runtime-unavailable", canonical.digest)
-    if not activation.telemetry_canary():
-        return _skip("telemetry-canary-unavailable", canonical.digest)
-    return LlmMutantResult("PASS", execution.payload, None, canonical.digest)
-
-
-@dataclass(frozen=True)
-class _CanonicalDiff:
-    text: str
-    digest: str
+        return _skip("dispatch-unavailable", canonical.digest)
+    payload = execution.payload
+    if not isinstance(payload, _AdapterPayload):
+        return _skip("malformed-runtime-payload", canonical.digest)
+    return LlmMutantResult(payload.status, payload.mutants, payload.reason, canonical.digest)
 
 
 def _validate_identity(
@@ -134,18 +135,6 @@ def _canonical_diff(
     return _CanonicalDiff(text, digest)
 
 
-def _validate_survivors(
-    records: tuple[Mapping[str, Any], ...],
-) -> tuple[Mapping[str, Any], ...]:
-    if len(records) > MAX_SURVIVORS:
-        raise LlmMutantAdapterError("survivor record count exceeds cap")
-    for record in records:
-        _validate_mutant_shape(record, "survivor")
-        bounded_json(record, MAX_SURVIVOR_BYTES, "survivor record")
-    bounded_json(records, MAX_SURVIVOR_PAYLOAD_BYTES, "survivor payload")
-    return records
-
-
 def _dispatch_once(
     contract: DispatchContract,
     reviewed_head: str,
@@ -163,15 +152,26 @@ def _dispatch_once(
 ) -> VerifierExecution:
     def runtime(_contract, _profile, binding: VerifierDispatchBinding) -> VerifierExecution:
         call = LlmMutantCall(
-            1, contract.task_id, reviewed_head, canonical.text, canonical.digest,
+            1, contract.task_id, reviewed_head, _profile.actual_model,
+            _profile.actual_reasoning_effort, canonical.text, canonical.digest,
             survivors, contract.role, contract.role_instance_id, contract.session_id,
             contract.dispatch_id, run_id, event_id, ("read-only", "disabled", "none"),
             True, True,
         )
-        response = invoke(call)
-        validated = _validate_response(response, canonical.text, contract, binding)
+        response = _invoke_once(invoke, call, _profile.actual_model, _profile.actual_reasoning_effort)
+        try:
+            validated = validate_response(
+                response, canonical.text, contract, binding, survivors
+            )
+            payload = _AdapterPayload("PASS", validated, None)
+        except (LlmMutantSkip, LlmMutantAdapterError) as error:
+            if not _metrics_are_recordable(response):
+                response = _failure_response(
+                    _profile.actual_model, _profile.actual_reasoning_effort, str(error), 0
+                )
+            payload = _AdapterPayload("SKIP", (), str(error))
         return VerifierExecution(
-            binding, validated, response.actual_model, response.actual_reasoning_effort,
+            binding, payload, response.actual_model, response.actual_reasoning_effort,
             response.input_tokens, response.cached_input_tokens,
             response.output_tokens, response.duration_ms,
         )
@@ -182,88 +182,47 @@ def _dispatch_once(
     )
 
 
-def _validate_response(
-    response: object,
-    diff: str,
-    contract: DispatchContract,
-    binding: VerifierDispatchBinding,
-) -> tuple[SemanticMutant, ...]:
+def _invoke_once(invoke, call, model: str, effort: str) -> LlmMutantResponse:
+    try:
+        response = invoke(call)
+    except (subprocess.TimeoutExpired, TimeoutError):
+        return _failure_response(model, effort, "runtime-timeout", MAX_DURATION_MS)
+    except Exception:
+        return _failure_response(model, effort, "runtime-error", 0)
     if not isinstance(response, LlmMutantResponse):
-        raise _LlmMutantSkip("runtime response schema is invalid")
-    _validate_metrics(response)
-    if not isinstance(response.mutants, list):
-        raise _LlmMutantSkip("mutant output schema is invalid")
-    bounded_json(response.mutants, MAX_OUTPUT_BYTES, "mutant output")
-    accepted = tuple(
-        _parse_mutant(item, diff, contract, binding) for item in response.mutants[:10]
-    )
-    if not accepted or all(item.equivalent == "yes" for item in accepted):
-        raise _LlmMutantSkip("no valid non-equivalent mutants")
-    return accepted
+        return _failure_response(model, effort, "malformed-runtime-response", 0)
+    return response
 
 
-def _validate_metrics(response: LlmMutantResponse) -> None:
-    for metric in (response.input_tokens, response.cached_input_tokens, response.output_tokens):
-        if not isinstance(metric, TokenMetric):
-            raise _LlmMutantSkip("provider token telemetry is malformed")
-        if metric.value is None and not metric.unavailable_reason:
-            raise _LlmMutantSkip("provider token telemetry is unavailable without reason")
-    if response.output_tokens.value is not None and response.output_tokens.value > MAX_OUTPUT_TOKENS:
-        raise _LlmMutantSkip("output token cap exceeded")
-    if type(response.duration_ms) is not int or not 0 <= response.duration_ms <= MAX_DURATION_MS:
-        raise _LlmMutantSkip("runtime duration cap exceeded")
+def _failure_response(
+    model: str, effort: str, reason: str, duration_ms: int
+) -> LlmMutantResponse:
+    metric = TokenMetric(None, reason)
+    return LlmMutantResponse((), model, effort, metric, metric, metric, duration_ms)
 
 
-def _parse_mutant(
-    value: object,
-    diff: str,
-    contract: DispatchContract,
-    binding: VerifierDispatchBinding,
-) -> SemanticMutant:
-    _validate_mutant_shape(value, "mutant")
-    fields = value
-    file = safe_file(fields["file"])
-    if not any(fnmatch.fnmatchcase(file, pattern) for pattern in contract.allowed_paths):
-        raise LlmMutantAdapterError("mutant path is outside allowed paths")
-    if file not in _changed_files(diff):
-        raise LlmMutantAdapterError("mutant path is outside reviewed diff")
-    parsed_line_range = line_range(fields["line_range"])
-    original = snippet(fields["original"], "original")
-    mutated = snippet(fields["mutated"], "mutated")
-    if original not in _changed_source(diff):
-        raise LlmMutantAdapterError("mutant original text does not match diff")
-    category = choice(fields["category"], LLM_MUTANT_CATEGORIES, "category")
-    rationale = normalized_text(fields["rationale"], "rationale")
-    equivalent = choice(fields["equivalent"], EQUIVALENCE, "mutant equivalence")
-    if equivalent == "yes" and len(rationale) < 1:
-        raise LlmMutantAdapterError("equivalent mutant requires rationale")
-    return SemanticMutant(
-        contract.task_id, binding.target_head, file, parsed_line_range, original, mutated,
-        category, rationale, equivalent, binding.role, binding.role_instance_id,
-        binding.session_id, binding.dispatch_id, binding.run_id, binding.event_id,
-        sha256(diff.encode("utf-8")).hexdigest(),
-    )
+def _metrics_are_recordable(response: object) -> bool:
+    if not isinstance(response, LlmMutantResponse):
+        return False
+    metrics = (response.input_tokens, response.cached_input_tokens, response.output_tokens)
+    return all(
+        isinstance(metric, TokenMetric)
+        and (metric.value is not None or bool(metric.unavailable_reason))
+        for metric in metrics
+    ) and type(response.duration_ms) is int and response.duration_ms >= 0
 
 
-def _validate_mutant_shape(value: object, name: str) -> None:
-    if not isinstance(value, Mapping) or set(value) != MUTANT_FIELDS:
-        raise LlmMutantAdapterError(f"{name} schema is invalid")
-
-
-def _changed_files(diff: str) -> set[str]:
-    return {
-        line[6:]
-        for line in diff.splitlines()
-        if line.startswith("+++ b/")
-    }
-
-
-def _changed_source(diff: str) -> str:
-    return "\n".join(
-        line[1:]
-        for line in diff.splitlines()
-        if line.startswith(("+", "-")) and not line.startswith(("+++", "---"))
-    )
+def _has_rollout_canary(
+    telemetry: SpawnTelemetryStore, task_id: str, run_id: str, event_id: str
+) -> bool:
+    try:
+        return any(
+            event.event_id == event_id and event.task_id == task_id and event.run_id == run_id
+            and event.role == "software_engineer"
+            for event in telemetry.read_events()
+        )
+    except SpawnTelemetryError:
+        return False
 
 
 def _require_target(state: tuple[str, bool], reviewed_head: str) -> None:
