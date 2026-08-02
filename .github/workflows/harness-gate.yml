@@ -25,6 +25,7 @@ on:
       - "tests/test_dispatch_contract.py"
       - "tests/test_code_review_dispatch.py"
       - "tests/test_execution_policy.py"
+      - "tests/test_final_verification.py"
       - "tests/test_orchestrator_write_boundary.py"
       - "tests/test_pipeline_state.py"
       - "tests/test_review_evidence.py"

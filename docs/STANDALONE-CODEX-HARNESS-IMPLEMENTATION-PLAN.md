@@ -781,9 +781,8 @@ tests/test_llm_mutant_adapter.py
 tests/test_spawn_telemetry.py
 ```
 
-This plan-only governance change does not implement a runtime capability and
-does not consume a capability task ID. T00 is complete. After this governance
-PR is human-confirmed merged, T01 remains the next capability task.
+T18B is implemented and merged in PR #41. T19 is the next capability task:
+derive and run task-appropriate final verification commands.
 
 ### Resolved delivery blocker: PR quality-gate helper resolution
 
@@ -821,7 +820,7 @@ quality gate or weakening its fail-closed behavior.
 | T17 | Complete | Add security-first review, re-review, sign-off, invalidation, and required shared-envelope coverage; merged in PR #38 | T13B-T13D, T15, T16 |
 | T18 | Complete | Write verification evidence bound to reviewed HEAD; bundled with T18A in PR #40 | T15 |
 | T18A | Complete | Dispatch the deterministic verifier read-only only after its shared envelope proves actual provider tokens or null-with-reason; bundled with T18 in PR #40 | T13B-T13D, T18 |
-| T18B | In review | Replace the Claude-specific Tier 3.5 call with a fresh read-only Codex LLM-mutant adapter, activated only after telemetry gates pass; implementation in this PR | T13B-T13D, T18 |
+| T18B | Complete | Replace the Claude-specific Tier 3.5 call with a fresh read-only Codex LLM-mutant adapter, activated only after telemetry gates pass; merged in PR #41 | T13B-T13D, T18 |
 | T19 | Planned | Derive and run task-appropriate final verification commands | T18A |
 | T20 | Planned | Add one-attempt PR state and existing-PR reconciliation | T19 |
 | T21 | Planned | Attempt PR creation once and preserve manual handoff on failure | T20 |
