@@ -10,11 +10,10 @@ from pathlib import Path
 import re
 from typing import Any
 
-from scripts.lib.writer_claim_io import (
-    open_harness_data,
-    open_optional_regular,
-    write_json,
-)
+if __package__:
+    from .writer_claim_io import open_harness_data, open_optional_regular, write_json
+else:
+    from writer_claim_io import open_harness_data, open_optional_regular, write_json
 
 
 class VerificationEvidenceError(ValueError):
