@@ -39,7 +39,6 @@ def changed_details(diff: str) -> dict[str, tuple[ChangedHunk, ...]]:
     current: str | None = None
     hunk_locations: set[int] = set()
     hunk_source: dict[int, list[str]] = {}
-    pending_removed: list[str] = []
     old_line = new_line = 0
     hunk = re.compile(
         r"^@@ -[0-9]+(?:,[0-9]+)? \+([0-9]+)(?:,[0-9]+)? @@"
@@ -55,7 +54,6 @@ def changed_details(diff: str) -> dict[str, tuple[ChangedHunk, ...]]:
                 )
                 hunk_locations = set()
                 hunk_source = {}
-                pending_removed = []
             current = line[6:]
             details.setdefault(current, [])
         elif line.startswith("@@") and current:
@@ -74,15 +72,11 @@ def changed_details(diff: str) -> dict[str, tuple[ChangedHunk, ...]]:
             new_line = int(match.group(1))
             hunk_locations = set()
             hunk_source = {}
-            pending_removed = []
         elif current and line.startswith("-") and not line.startswith("---"):
-            pending_removed.append(line[1:])
             old_line += 1
         elif current and line.startswith("+") and not line.startswith("+++"):
             hunk_locations.add(new_line)
-            hunk_source.setdefault(new_line, []).extend(pending_removed)
-            hunk_source[new_line].append(line[1:])
-            pending_removed = []
+            hunk_source.setdefault(new_line, []).append(line[1:])
             new_line += 1
         elif current and line.startswith(" "):
             hunk_locations.add(new_line)

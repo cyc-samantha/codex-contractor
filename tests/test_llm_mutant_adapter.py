@@ -72,7 +72,7 @@ def survivor(**overrides: object) -> dict[str, object]:
     value: dict[str, object] = {
         "file": "scripts/lib/example.py",
         "line_range": "10",
-        "original": "return value == 1",
+        "original": "return value == 2",
         "mutated": "return value != 1",
         "category": "wrong-comparator",
         "rationale": "The comparison survivor may hide an uncovered branch.",
@@ -200,7 +200,7 @@ def test_binds_mutants_to_review_identity(tmp_path: Path) -> None:
     assert mutant.reviewed_head == TARGET_HEAD
     assert mutant.file == "scripts/lib/example.py"
     assert mutant.line_range == "10"
-    assert mutant.original == "return value == 1"
+    assert mutant.original == "return value == 2"
     assert mutant.category == "wrong-comparator"
     assert mutant.producer_role == "verifier"
     assert mutant.producer_identity == "verifier-01"
