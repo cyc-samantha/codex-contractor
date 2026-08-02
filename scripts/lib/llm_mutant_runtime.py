@@ -9,8 +9,12 @@ import subprocess
 import tempfile
 import time
 
-from .llm_mutant_types import LlmMutantCall, LlmMutantResponse
-from .llm_mutant_types import MAX_OUTPUT_TOKENS
+from .llm_mutant_types import (
+    LLM_MUTANT_CATEGORIES,
+    MAX_OUTPUT_TOKENS,
+    LlmMutantCall,
+    LlmMutantResponse,
+)
 from .spawn_telemetry import TokenMetric
 
 
@@ -19,7 +23,25 @@ OUTPUT_SCHEMA = {
     "additionalProperties": False,
     "required": ["mutants"],
     "properties": {
-        "mutants": {"type": "array", "maxItems": 10, "items": {"type": "object"}},
+        "mutants": {
+            "type": "array", "maxItems": 10,
+            "items": {
+                "type": "object", "additionalProperties": False,
+                "required": [
+                    "file", "line_range", "original", "mutated",
+                    "category", "rationale", "equivalent",
+                ],
+                "properties": {
+                    "file": {"type": "string"},
+                    "line_range": {"type": "string"},
+                    "original": {"type": "string"},
+                    "mutated": {"type": "string"},
+                    "category": {"enum": sorted(LLM_MUTANT_CATEGORIES)},
+                    "rationale": {"type": "string"},
+                    "equivalent": {"enum": ["yes", "no", "unsure"]},
+                },
+            },
+        },
     },
 }
 
@@ -49,7 +71,7 @@ class NativeCodexRuntime:
     def _environment(self, sandbox: str) -> dict[str, str]:
         environment = {
             name: os.environ[name]
-            for name in ("PATH", "CODEX_HOME", "OPENAI_API_KEY")
+            for name in ("PATH",)
             if name in os.environ
         }
         environment["HOME"] = sandbox

@@ -156,6 +156,11 @@ def _original_is_in_hunk(
 ) -> bool:
     bounds = [int(item) for item in parsed_line_range.split("-")]
     for hunk in hunks:
-        if original in "\n".join(hunk.source):
+        source = "\n".join(
+            source_line
+            for number in range(bounds[0], bounds[-1] + 1)
+            for source_line in hunk.source_by_line.get(number, ())
+        )
+        if original in source:
             return True
     return False

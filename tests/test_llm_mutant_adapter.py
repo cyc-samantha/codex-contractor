@@ -3,12 +3,14 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import sys
+from unittest.mock import patch
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parents[1]))
 
 from scripts.lib.dispatch_contract import parse_dispatch_contract  # noqa: E402
+from scripts.lib import llm_mutant_adapter as adapter_module  # noqa: E402
 from scripts.lib.llm_mutant_adapter import (  # noqa: E402
     AdapterActivation,
     LLM_MUTANT_CATEGORIES,
@@ -118,6 +120,12 @@ def seed_canary(store: SpawnTelemetryStore) -> None:
 def run_adapter(tmp_path: Path, invoke, **overrides):
     store = SpawnTelemetryStore(tmp_path / "events.jsonl")
     selected_activation = overrides.get("activation", activation())
+    canonical_reader = overrides.pop(
+        "_canonical_reader", lambda _repository, _base, _target: DIFF
+    )
+    target_probe = overrides.pop(
+        "_target_probe", lambda _repository: (TARGET_HEAD, True)
+    )
     if selected_activation.enabled and overrides.get("seed_canary", True) and not store.read_events():
         seed_canary(store)
     values = {
@@ -128,19 +136,19 @@ def run_adapter(tmp_path: Path, invoke, **overrides):
         "retry_cycle_id": "initial",
         "work_type": "mechanical",
         "telemetry": store,
-        "canonical_diff_reader": lambda _repository, _base, _target: DIFF,
         "survivor_records": (survivor(),),
         "supplied_diff": DIFF,
-        "invoke": invoke,
         "available_profiles": {("gpt-5.6-terra", "low")},
         "authorized_fallbacks": {},
         "activation": selected_activation,
         "engineer_role_instance_id": "software_engineer-01",
         "engineer_session_id": "session-software_engineer-01",
-        "target_probe": lambda: (TARGET_HEAD, True),
     }
     values.update({key: value for key, value in overrides.items() if key != "seed_canary"})
-    return generate_llm_mutants(**values)
+    with patch.object(adapter_module, "NativeCodexRuntime", return_value=invoke):
+        with patch.object(adapter_module, "canonical_diff", side_effect=canonical_reader):
+            with patch.object(adapter_module, "git_target_probe", side_effect=target_probe):
+                return generate_llm_mutants(**values)
 
 
 def test_dispatches_one_bounded_codex_call(tmp_path: Path) -> None:
@@ -237,21 +245,17 @@ def test_rejects_substituted_diff_and_stale_head(tmp_path: Path) -> None:
         )
 
 
-def test_defaults_to_bound_worktree_for_target_probe(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_defaults_to_bound_worktree_for_target_probe(tmp_path: Path) -> None:
     observed: list[Path] = []
-    monkeypatch.setattr(
-        "scripts.lib.llm_mutant_adapter.git_target_probe",
-        lambda repository: (observed.append(repository) or (TARGET_HEAD, True)),
-    )
     result = run_adapter(
         tmp_path,
         lambda _call: response([survivor(mutated="return value != 2")]),
-        canonical_diff_reader=lambda repository, _base, _target: (
+        _canonical_reader=lambda repository, _base, _target: (
             observed.append(repository) or DIFF
         ),
-        target_probe=None,
+        _target_probe=lambda repository: (
+            observed.append(repository) or (TARGET_HEAD, True)
+        ),
     )
     assert result.status == "PASS"
     assert observed == [
@@ -303,6 +307,9 @@ def test_requires_distinct_read_only_runtime(tmp_path: Path) -> None:
     assert "--skip-git-repo-check" in command
     assert "--cd /tmp/t18b-empty" in command_text
     assert "/srv/codex-harness" not in command_text
+    environment = NativeCodexRuntime("codex")._environment("/tmp/t18b-empty")
+    assert set(environment) <= {"PATH", "HOME", "TMPDIR"}
+    assert environment["HOME"] == "/tmp/t18b-empty"
     output = tmp_path / "native-output.json"
     output.write_text(json.dumps({"mutants": []}), encoding="utf-8")
     parsed = NativeCodexRuntime("codex")._response(calls[0], output, 100)
@@ -432,7 +439,7 @@ def test_accepts_exact_diff_token_and_duration_caps(tmp_path: Path) -> None:
             output_tokens=TokenMetric(8_000, None),
             duration_ms=120_000,
         ),
-        canonical_diff_reader=lambda _repository, _base, _target: exact_diff,
+        _canonical_reader=lambda _repository, _base, _target: exact_diff,
         supplied_diff=exact_diff,
     )
     assert result.status == "PASS"

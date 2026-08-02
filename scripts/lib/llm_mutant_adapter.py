@@ -21,8 +21,6 @@ from .verifier_dispatch import (
 )
 from .llm_mutant_types import (
     AdapterActivation,
-    CanonicalDiffReader,
-    CodexInvoker,
     LLM_MUTANT_CATEGORIES,
     MAX_DIFF_BYTES,
     MAX_DURATION_MS,
@@ -31,7 +29,6 @@ from .llm_mutant_types import (
     LlmMutantResult,
     LlmMutantSkip,
     SemanticMutant,
-    TargetProbe,
     LlmMutantAdapterError,
 )
 from .llm_mutant_git import canonical_diff, target_probe as git_target_probe
@@ -61,16 +58,13 @@ def generate_llm_mutants(
     retry_cycle_id: str,
     work_type: str,
     telemetry: SpawnTelemetryStore,
-    canonical_diff_reader: CanonicalDiffReader | None,
     survivor_records: tuple[Mapping[str, Any], ...],
     supplied_diff: str | None,
-    invoke: CodexInvoker | None,
     available_profiles: set[tuple[str, str]],
     authorized_fallbacks: Mapping[tuple[str, str], tuple[str, str]],
     activation: AdapterActivation | None = None,
     engineer_role_instance_id: str = "software_engineer-01",
     engineer_session_id: str = "session-software_engineer-01",
-    target_probe: TargetProbe | None = None,
 ) -> LlmMutantResult:
     _validate_identity(contract, reviewed_head, engineer_role_instance_id, engineer_session_id)
     if activation is None or not activation.enabled:
@@ -81,17 +75,14 @@ def generate_llm_mutants(
         telemetry, contract.task_id, run_id, activation.canary_event_id
     ):
         return _skip("telemetry-canary-unavailable", "")
-    reader = canonical_diff_reader or canonical_diff
-    runtime = invoke or NativeCodexRuntime()
-    canonical = _canonical_diff(contract, reviewed_head, supplied_diff, reader)
+    canonical = _canonical_diff(contract, reviewed_head, supplied_diff)
     survivors = validate_survivors(survivor_records)
-    probe = target_probe or (lambda: git_target_probe(contract.worktree))
-    _require_target(probe(), reviewed_head)
+    _require_target(git_target_probe(contract.worktree), reviewed_head)
     try:
         execution = _dispatch_once(
             contract, reviewed_head, run_id, event_id, retry_cycle_id, work_type,
-            telemetry, canonical, survivors, runtime, available_profiles,
-            authorized_fallbacks, probe,
+            telemetry, canonical, survivors, available_profiles,
+            authorized_fallbacks,
         )
     except VerifierDispatchError as error:
         cause = error.__cause__
@@ -120,12 +111,11 @@ def _canonical_diff(
     contract: DispatchContract,
     reviewed_head: str,
     supplied_diff: str | None,
-    reader: CanonicalDiffReader,
 ) -> _CanonicalDiff:
     if supplied_diff is not None:
         bounded_text(supplied_diff, MAX_DIFF_BYTES, "canonical diff")
     try:
-        text = reader(contract.worktree, contract.base_head, reviewed_head)
+        text = canonical_diff(contract.worktree, contract.base_head, reviewed_head)
     except Exception as error:
         raise LlmMutantAdapterError("canonical diff reconstruction failed") from error
     bounded_text(text, MAX_DIFF_BYTES, "canonical diff")
@@ -145,11 +135,11 @@ def _dispatch_once(
     telemetry: SpawnTelemetryStore,
     canonical: _CanonicalDiff,
     survivors: tuple[Mapping[str, Any], ...],
-    invoke: CodexInvoker,
     available_profiles: set[tuple[str, str]],
     fallbacks: Mapping[tuple[str, str], tuple[str, str]],
-    target_probe: TargetProbe,
 ) -> VerifierExecution:
+    native_runtime = NativeCodexRuntime()
+
     def runtime(_contract, _profile, binding: VerifierDispatchBinding) -> VerifierExecution:
         call = LlmMutantCall(
             1, contract.task_id, reviewed_head, _profile.actual_model,
@@ -158,7 +148,9 @@ def _dispatch_once(
             contract.dispatch_id, run_id, event_id, ("read-only", "disabled", "none"),
             True, True,
         )
-        response = _invoke_once(invoke, call, _profile.actual_model, _profile.actual_reasoning_effort)
+        response = _invoke_once(
+            native_runtime, call, _profile.actual_model, _profile.actual_reasoning_effort
+        )
         try:
             validated = validate_response(
                 response, canonical.text, contract, binding, survivors
@@ -178,7 +170,8 @@ def _dispatch_once(
 
     return dispatch_verifier(
         contract, run_id, event_id, retry_cycle_id, work_type, telemetry, runtime,
-        available_profiles, fallbacks, reviewed_head, target_probe,
+        available_profiles, fallbacks, reviewed_head,
+        lambda: git_target_probe(contract.worktree),
     )
 
 

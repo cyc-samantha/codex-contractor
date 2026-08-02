@@ -13,8 +13,7 @@ from .llm_mutant_types import LlmMutantAdapterError
 @dataclass(frozen=True)
 class ChangedHunk:
     locations: frozenset[int]
-    source_by_line: dict[int, str]
-    source: tuple[str, ...]
+    source_by_line: dict[int, tuple[str, ...]]
 
 
 def canonical_diff(repository: Path, base_head: str, target_head: str) -> str:
@@ -39,8 +38,8 @@ def changed_details(diff: str) -> dict[str, tuple[ChangedHunk, ...]]:
     details: dict[str, list[ChangedHunk]] = {}
     current: str | None = None
     hunk_locations: set[int] = set()
-    hunk_source: dict[int, str] = {}
-    hunk_lines: list[str] = []
+    hunk_source: dict[int, list[str]] = {}
+    pending_removed: list[str] = []
     old_line = new_line = 0
     hunk = re.compile(
         r"^@@ -[0-9]+(?:,[0-9]+)? \+([0-9]+)(?:,[0-9]+)? @@"
@@ -50,19 +49,21 @@ def changed_details(diff: str) -> dict[str, tuple[ChangedHunk, ...]]:
             if current and hunk_locations:
                 details[current].append(
                     ChangedHunk(
-                        frozenset(hunk_locations), dict(hunk_source), tuple(hunk_lines)
+                        frozenset(hunk_locations),
+                        {number: tuple(lines) for number, lines in hunk_source.items()},
                     )
                 )
                 hunk_locations = set()
                 hunk_source = {}
-                hunk_lines = []
+                pending_removed = []
             current = line[6:]
             details.setdefault(current, [])
         elif line.startswith("@@") and current:
             if hunk_locations:
                 details[current].append(
                     ChangedHunk(
-                        frozenset(hunk_locations), dict(hunk_source), tuple(hunk_lines)
+                        frozenset(hunk_locations),
+                        {number: tuple(lines) for number, lines in hunk_source.items()},
                     )
                 )
             match = hunk.match(line)
@@ -73,24 +74,27 @@ def changed_details(diff: str) -> dict[str, tuple[ChangedHunk, ...]]:
             new_line = int(match.group(1))
             hunk_locations = set()
             hunk_source = {}
-            hunk_lines = []
+            pending_removed = []
         elif current and line.startswith("-") and not line.startswith("---"):
-            hunk_lines.append(line[1:])
+            pending_removed.append(line[1:])
             old_line += 1
         elif current and line.startswith("+") and not line.startswith("+++"):
-            hunk_lines.append(line[1:])
             hunk_locations.add(new_line)
-            hunk_source[new_line] = line[1:]
+            hunk_source.setdefault(new_line, []).extend(pending_removed)
+            hunk_source[new_line].append(line[1:])
+            pending_removed = []
             new_line += 1
         elif current and line.startswith(" "):
-            hunk_lines.append(line[1:])
             hunk_locations.add(new_line)
-            hunk_source[new_line] = line[1:]
+            hunk_source.setdefault(new_line, []).append(line[1:])
             old_line += 1
             new_line += 1
     if current and hunk_locations:
         details[current].append(
-            ChangedHunk(frozenset(hunk_locations), dict(hunk_source), tuple(hunk_lines))
+            ChangedHunk(
+                frozenset(hunk_locations),
+                {number: tuple(lines) for number, lines in hunk_source.items()},
+            )
         )
     return {name: tuple(hunks) for name, hunks in details.items()}
 
