@@ -13,10 +13,12 @@ import fcntl
 if __package__:
     from .pipeline_state_paths import validate_task_id
     from . import writer_claim_io as claim_io
+    from .verification_evidence import VerificationEvidenceError, reconcile_verification_evidence
     from .writer_claim_reconciliation import ReconciliationError, active_processes, canonical_directory, registered_worktree_head
 else:
     from pipeline_state_paths import validate_task_id
     import writer_claim_io as claim_io
+    from verification_evidence import VerificationEvidenceError, reconcile_verification_evidence
     from writer_claim_reconciliation import ReconciliationError, active_processes, canonical_directory, registered_worktree_head
 
 
@@ -252,11 +254,14 @@ class WriterClaimManager:
                 evidence = claim_io.read_json(task, "verification-evidence.json")
         except FileNotFoundError:
             return "absent"
-        except (OSError, ValueError, json.JSONDecodeError) as error:
+        except (OSError, ValueError, json.JSONDecodeError, VerificationEvidenceError) as error:
             raise ClaimRecoveryRequiredError("verification evidence cannot be trusted") from error
-        if evidence.get("task_id") != task_id or evidence.get("git_head") != head or not evidence.get("verdict"):
-            raise ClaimRecoveryRequiredError("verification evidence is stale or identity-mismatched")
-        return "valid"
+        try:
+            return reconcile_verification_evidence(
+                evidence, task_id=task_id, current_head=head
+            )
+        except VerificationEvidenceError as error:
+            raise ClaimRecoveryRequiredError(str(error)) from error
 
     @staticmethod
     def _active_processes(worktree: Path) -> list[int]:

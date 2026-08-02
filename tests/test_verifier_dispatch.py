@@ -83,8 +83,7 @@ def test_verifier_dispatch_requires_read_only_contract(tmp_path: Path) -> None:
             {("gpt-5.6-terra", "low")},
             {},
             "b" * 40,
-            "b" * 40,
-            True,
+            lambda: ("b" * 40, True),
         )
 
 
@@ -103,8 +102,7 @@ def test_verifier_dispatch_binds_reviewed_head_and_identity(tmp_path: Path) -> N
             {("gpt-5.6-terra", "low")},
             {},
             "a" * 40,
-            "b" * 40,
-            True,
+            lambda: ("b" * 40, True),
         )
 
     with pytest.raises(VerifierDispatchError, match="binding"):
@@ -130,8 +128,7 @@ def test_verifier_dispatch_binds_reviewed_head_and_identity(tmp_path: Path) -> N
             {("gpt-5.6-terra", "low")},
             {},
             "b" * 40,
-            "b" * 40,
-            True,
+            lambda: ("b" * 40, True),
         )
 
 
@@ -151,7 +148,8 @@ def test_verifier_dispatch_requires_durable_matching_telemetry(tmp_path: Path) -
         dispatch_verifier(
             contract(), "run-01", "verifier-event-01", "initial", "mechanical",
             store, lambda _contract, _profile, binding: execution(binding),
-            {("gpt-5.6-terra", "low")}, {}, "b" * 40, "b" * 40, True,
+            {("gpt-5.6-terra", "low")}, {}, "b" * 40,
+            lambda: ("b" * 40, True),
         )
 
 
@@ -166,7 +164,8 @@ def test_verifier_accepts_null_with_reason_provider_metrics(tmp_path: Path) -> N
             input_tokens=TokenMetric(None, "provider did not report input tokens"),
             output_tokens=TokenMetric(None, "provider did not report output tokens"),
         ),
-        {("gpt-5.6-terra", "low")}, {}, "b" * 40, "b" * 40, True,
+        {("gpt-5.6-terra", "low")}, {}, "b" * 40,
+        lambda: ("b" * 40, True),
     )
 
     assert result.payload == {"verdict": "VERIFIED"}
@@ -182,5 +181,18 @@ def test_verifier_rejects_malformed_runtime_result(tmp_path: Path) -> None:
             contract(), "run-01", "verifier-event-01", "initial", "mechanical",
             SpawnTelemetryStore(tmp_path / "events.jsonl"),
             lambda _contract, _profile, _binding: object(),
-            {("gpt-5.6-terra", "low")}, {}, "b" * 40, "b" * 40, True,
+            {("gpt-5.6-terra", "low")}, {}, "b" * 40,
+            lambda: ("b" * 40, True),
+        )
+
+
+def test_verifier_rejects_target_change_after_runtime(tmp_path: Path) -> None:
+    states = iter((("b" * 40, True), ("c" * 40, False)))
+
+    with pytest.raises(VerifierDispatchError, match="changed during verifier"):
+        dispatch_verifier(
+            contract(), "run-01", "verifier-event-01", "initial", "mechanical",
+            SpawnTelemetryStore(tmp_path / "events.jsonl"),
+            lambda _contract, _profile, binding: execution(binding),
+            {("gpt-5.6-terra", "low")}, {}, "b" * 40, lambda: next(states),
         )

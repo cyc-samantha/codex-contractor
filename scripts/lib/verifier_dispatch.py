@@ -55,6 +55,7 @@ class VerifierExecution:
 VerifierRuntime = Callable[
     [DispatchContract, ExecutionProfile, VerifierDispatchBinding], VerifierExecution
 ]
+TargetProbe = Callable[[], tuple[str, bool]]
 
 
 def dispatch_verifier(
@@ -68,14 +69,14 @@ def dispatch_verifier(
     available_profiles: set[ProfileKey],
     authorized_fallbacks: Mapping[ProfileKey, ProfileKey],
     review_head: str,
-    current_head: str,
-    worktree_clean: bool,
+    target_probe: TargetProbe,
 ) -> VerifierExecution:
-    validated = _validated_target(contract, review_head, current_head, worktree_clean)
+    validated = _validated_target(contract, review_head, target_probe())
     profile = _resolve_profile(validated, work_type, available_profiles, authorized_fallbacks)
     binding = _binding(validated, run_id, event_id)
     _reject_existing_event(telemetry, event_id)
     execution = _run_runtime(runtime, validated, profile, binding)
+    _require_unchanged_target(validated, target_probe())
     _validate_execution(binding, profile, execution)
     _record_telemetry(telemetry, _envelope(profile, execution, retry_cycle_id))
     return execution
@@ -94,11 +95,10 @@ def _validate_contract(contract: DispatchContract) -> DispatchContract:
 def _validated_target(
     contract: DispatchContract,
     review_head: str,
-    current_head: str,
-    worktree_clean: bool,
+    target_state: tuple[str, bool],
 ) -> DispatchContract:
     validated = _validate_contract(contract)
-    _require_fresh_target(validated, review_head, current_head, worktree_clean)
+    _require_fresh_target(validated, review_head, target_state)
     return validated
 
 
@@ -118,15 +118,23 @@ def _require_read_only_permissions(contract: DispatchContract) -> None:
 def _require_fresh_target(
     contract: DispatchContract,
     review_head: str,
-    current_head: str,
-    worktree_clean: bool,
+    target_state: tuple[str, bool],
 ) -> None:
+    current_head, worktree_clean = target_state
     if type(worktree_clean) is not bool or not worktree_clean:
         raise VerifierDispatchError("verifier worktree must be clean")
     if contract.target_head != review_head:
         raise VerifierDispatchError("verifier target does not match review HEAD")
     if contract.target_head != current_head:
         raise VerifierDispatchError("verifier target does not match current HEAD")
+
+
+def _require_unchanged_target(
+    contract: DispatchContract, target_state: tuple[str, bool]
+) -> None:
+    current_head, worktree_clean = target_state
+    if contract.target_head != current_head or worktree_clean is not True:
+        raise VerifierDispatchError("repository changed during verifier run")
 
 
 def _resolve_profile(

@@ -3,6 +3,7 @@ from __future__ import annotations
 import tempfile
 import threading
 import fcntl
+import json
 import os
 import subprocess
 import unittest
@@ -244,7 +245,7 @@ class WriterClaimTest(unittest.TestCase):
             self.manager.takeover("task-one", self._identity("session-b"), authorization=self._authorization())
         (self.worktree / "dirty").unlink()
         evidence = self.harness_data / "pipeline-state/task-one/verification-evidence.json"
-        evidence.write_text('{"task_id":"task-one","git_head":"stale","verdict":"passed"}\n')
+        evidence.write_text(json.dumps(self._evidence("0" * 40)) + "\n")
 
         with self.assertRaises(ClaimRecoveryRequiredError):
             self.manager.takeover("task-one", self._identity("session-b"), authorization=self._authorization())
@@ -252,9 +253,7 @@ class WriterClaimTest(unittest.TestCase):
     def test_takeover_accepts_evidence_bound_to_current_head(self) -> None:
         self.manager.acquire("task-one", self.identity)
         evidence = self.harness_data / "pipeline-state/task-one/verification-evidence.json"
-        evidence.write_text(
-            f'{{"task_id":"task-one","git_head":"{self.identity["head"]}","verdict":"passed"}}\n'
-        )
+        evidence.write_text(json.dumps(self._evidence(self.identity["head"])) + "\n")
 
         successor = self.manager.takeover(
             "task-one",
@@ -384,6 +383,18 @@ class WriterClaimTest(unittest.TestCase):
             "branch": "build/claim",
             "worktree": str(self.worktree),
             "head": head,
+        }
+
+    @staticmethod
+    def _evidence(head: str) -> dict[str, object]:
+        return {
+            "schema_version": 1,
+            "task_id": "task-one",
+            "git_head": head,
+            "generated_at": "2026-08-02T10:00:00+00:00",
+            "verdict": "passed",
+            "tier_results": [],
+            "sandbox_run": True,
         }
 
     @staticmethod

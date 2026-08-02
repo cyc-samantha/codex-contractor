@@ -23,8 +23,13 @@ class VerificationEvidenceError(ValueError):
 
 IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 GIT_HEAD = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
-STATUSES = frozenset({"PASS", "FAIL", "SKIP", "N/A"})
-VERDICTS = frozenset({"VERIFIED", "VERIFIED_WITH_SKIP", "UNVERIFIED"})
+STATUSES = frozenset({
+    "PASS", "FAIL", "SKIP", "N/A", "passed", "failed", "skipped",
+    "not_applicable",
+})
+VERDICTS = frozenset({
+    "VERIFIED", "VERIFIED_WITH_SKIP", "UNVERIFIED", "passed",
+})
 EVIDENCE_FIELDS = frozenset(
     {
         "schema_version", "task_id", "git_head", "generated_at", "verdict",
@@ -93,13 +98,59 @@ def write_verification_evidence(
     _atomic_write(path, serialize_verification_evidence(validated))
 
 
-def read_verification_evidence(path: Path) -> VerificationEvidence:
+def read_verification_evidence(
+    path: Path,
+    *,
+    review_head: str | None = None,
+    current_head: str | None = None,
+    worktree_clean: bool | None = None,
+) -> VerificationEvidence:
     parent, name = _open_target_parent(path)
     try:
         value = _read_value(parent, name)
     finally:
         os.close(parent)
-    return parse_verification_evidence(value)
+    evidence = parse_verification_evidence(value)
+    return _validated_read(evidence, review_head, current_head, worktree_clean)
+
+
+def validate_verification_freshness(
+    evidence: VerificationEvidence,
+    *,
+    review_head: str,
+    current_head: str,
+    worktree_clean: bool,
+) -> VerificationEvidence:
+    _require_freshness(evidence, review_head, current_head, worktree_clean)
+    return evidence
+
+
+def reconcile_verification_evidence(
+    value: object, *, task_id: str, current_head: str
+) -> str:
+    evidence = parse_verification_evidence(value)
+    if evidence.task_id != task_id or evidence.git_head != current_head:
+        raise VerificationEvidenceError("verification evidence is stale or identity-mismatched")
+    return "valid"
+
+
+def _validated_read(
+    evidence: VerificationEvidence,
+    review_head: str | None,
+    current_head: str | None,
+    worktree_clean: bool | None,
+) -> VerificationEvidence:
+    context = (review_head, current_head, worktree_clean)
+    if all(value is None for value in context):
+        return evidence
+    if any(value is None for value in context):
+        raise VerificationEvidenceError("freshness context is incomplete")
+    return validate_verification_freshness(
+        evidence,
+        review_head=review_head,
+        current_head=current_head,
+        worktree_clean=worktree_clean,
+    )
 
 
 def _require_freshness(
@@ -172,8 +223,8 @@ def _reject_nonregular_target(parent: int, name: str) -> None:
 
 
 def _tier_results(value: object) -> tuple[TierResult, ...]:
-    if not isinstance(value, list) or not value:
-        raise VerificationEvidenceError("tier_results must be a non-empty list")
+    if not isinstance(value, list):
+        raise VerificationEvidenceError("tier_results must be a list")
     results = tuple(_tier_result(item) for item in value)
     if len({result.tier for result in results}) != len(results):
         raise VerificationEvidenceError("tier numbers must be unique")
@@ -190,20 +241,34 @@ def _tier_result(value: object) -> TierResult:
 
 
 def _validate_verdict(evidence: VerificationEvidence) -> None:
-    _reject_verified_failure(evidence)
-    _require_skip_for_partial_verdict(evidence)
+    _reject_failed_verified(evidence)
+    _require_skipped_partial(evidence)
+    _require_no_skips_for_verified(evidence)
+    _require_sandbox_for_verified(evidence)
 
 
-def _reject_verified_failure(evidence: VerificationEvidence) -> None:
-    failed = any(result.status == "FAIL" for result in evidence.tier_results)
-    if evidence.verdict == "VERIFIED" and failed:
+def _reject_failed_verified(evidence: VerificationEvidence) -> None:
+    failed = any(result.status in {"FAIL", "failed"} for result in evidence.tier_results)
+    if evidence.verdict in {"VERIFIED", "VERIFIED_WITH_SKIP", "passed"} and failed:
         raise VerificationEvidenceError("VERIFIED cannot contain a failed tier")
 
 
-def _require_skip_for_partial_verdict(evidence: VerificationEvidence) -> None:
-    skipped = any(result.status == "SKIP" for result in evidence.tier_results)
+def _require_skipped_partial(evidence: VerificationEvidence) -> None:
+    skipped = any(result.status in {"SKIP", "skipped"} for result in evidence.tier_results)
     if evidence.verdict == "VERIFIED_WITH_SKIP" and not skipped:
         raise VerificationEvidenceError("VERIFIED_WITH_SKIP requires a skipped tier")
+
+
+def _require_no_skips_for_verified(evidence: VerificationEvidence) -> None:
+    skipped = any(result.status in {"SKIP", "skipped"} for result in evidence.tier_results)
+    if evidence.verdict in {"VERIFIED", "passed"} and skipped:
+        raise VerificationEvidenceError("VERIFIED cannot contain a skipped tier")
+
+
+def _require_sandbox_for_verified(evidence: VerificationEvidence) -> None:
+    verified = evidence.verdict in {"VERIFIED", "VERIFIED_WITH_SKIP", "passed"}
+    if verified and evidence.sandbox_run is not True:
+        raise VerificationEvidenceError("verified evidence requires sandbox_run")
 
 
 def _mapping(value: object, name: str) -> dict[str, Any]:
