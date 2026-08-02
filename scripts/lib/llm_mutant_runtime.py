@@ -10,6 +10,7 @@ import tempfile
 import time
 
 from .llm_mutant_types import LlmMutantCall, LlmMutantResponse
+from .llm_mutant_types import MAX_OUTPUT_TOKENS
 from .spawn_telemetry import TokenMetric
 
 
@@ -27,7 +28,7 @@ class NativeCodexRuntime:
     """Invoke one read-only Codex process in an empty ephemeral directory."""
 
     def __init__(self, codex_bin: str | None = None) -> None:
-        self.codex_bin = codex_bin or os.environ.get("CODEX_BIN", "codex")
+        self.codex_bin = codex_bin or "codex"
 
     def __call__(self, call: LlmMutantCall) -> LlmMutantResponse:
         with tempfile.TemporaryDirectory(prefix="t18b-codex-") as sandbox:
@@ -38,17 +39,32 @@ class NativeCodexRuntime:
             result = subprocess.run(
                 self._command(call, sandbox, output, schema),
                 cwd=sandbox, capture_output=True, text=True, timeout=120,
+                env=self._environment(sandbox),
             )
             duration_ms = int((time.monotonic() - started) * 1000)
             if result.returncode != 0 or not output.is_file():
                 raise RuntimeError("Codex runtime did not produce schema output")
             return self._response(call, output, duration_ms)
 
+    def _environment(self, sandbox: str) -> dict[str, str]:
+        environment = {
+            name: os.environ[name]
+            for name in ("PATH", "CODEX_HOME", "OPENAI_API_KEY")
+            if name in os.environ
+        }
+        environment["HOME"] = sandbox
+        environment["TMPDIR"] = sandbox
+        return environment
+
     def _command(self, call, sandbox, output, schema):
         return [
             self.codex_bin, "exec", "--ephemeral", "--ignore-user-config",
+            "--ignore-rules", "--disable", "shell_tool", "--disable", "browser_use",
+            "--disable", "browser_use_external", "--disable", "computer_use",
+            "--disable", "apps", "--disable", "multi_agent",
             "--model", call.requested_model,
             "--config", f'model_reasoning_effort="{call.requested_reasoning_effort}"',
+            "--config", f"model_max_output_tokens={MAX_OUTPUT_TOKENS}",
             "--sandbox", "read-only", "--skip-git-repo-check", "--cd", sandbox,
             "--output-schema", str(schema), "--output-last-message", str(output),
             prompt(call),
@@ -56,9 +72,14 @@ class NativeCodexRuntime:
 
     def _response(self, call, output, duration_ms):
         try:
-            mutants = json.loads(output.read_text(encoding="utf-8"))
+            payload = json.loads(output.read_text(encoding="utf-8"))
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as error:
             raise RuntimeError("Codex runtime output is not JSON") from error
+        if not isinstance(payload, dict) or set(payload) != {"mutants"}:
+            raise RuntimeError("Codex runtime output schema is invalid")
+        mutants = payload["mutants"]
+        if not isinstance(mutants, list):
+            raise RuntimeError("Codex runtime mutants are not a list")
         reason = "Codex CLI did not expose provider token metrics"
         metric = TokenMetric(None, reason)
         return LlmMutantResponse(

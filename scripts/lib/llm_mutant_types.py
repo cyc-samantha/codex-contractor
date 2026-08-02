@@ -79,6 +79,7 @@ class LlmMutantResponse:
     cached_input_tokens: TokenMetric
     output_tokens: TokenMetric
     duration_ms: int
+    runtime_reason: str | None = None
 
 
 @dataclass(frozen=True)

@@ -85,7 +85,7 @@ def generate_llm_mutants(
     runtime = invoke or NativeCodexRuntime()
     canonical = _canonical_diff(contract, reviewed_head, supplied_diff, reader)
     survivors = validate_survivors(survivor_records)
-    probe = target_probe or (lambda: git_target_probe(contract.repository))
+    probe = target_probe or (lambda: git_target_probe(contract.worktree))
     _require_target(probe(), reviewed_head)
     try:
         execution = _dispatch_once(
@@ -125,7 +125,7 @@ def _canonical_diff(
     if supplied_diff is not None:
         bounded_text(supplied_diff, MAX_DIFF_BYTES, "canonical diff")
     try:
-        text = reader(contract.repository, contract.base_head, reviewed_head)
+        text = reader(contract.worktree, contract.base_head, reviewed_head)
     except Exception as error:
         raise LlmMutantAdapterError("canonical diff reconstruction failed") from error
     bounded_text(text, MAX_DIFF_BYTES, "canonical diff")
@@ -198,7 +198,9 @@ def _failure_response(
     model: str, effort: str, reason: str, duration_ms: int
 ) -> LlmMutantResponse:
     metric = TokenMetric(None, reason)
-    return LlmMutantResponse((), model, effort, metric, metric, metric, duration_ms)
+    return LlmMutantResponse(
+        (), model, effort, metric, metric, metric, duration_ms, reason
+    )
 
 
 def _metrics_are_recordable(response: object) -> bool:
@@ -206,10 +208,15 @@ def _metrics_are_recordable(response: object) -> bool:
         return False
     metrics = (response.input_tokens, response.cached_input_tokens, response.output_tokens)
     return all(
-        isinstance(metric, TokenMetric)
-        and (metric.value is not None or bool(metric.unavailable_reason))
+        isinstance(metric, TokenMetric) and _metric_is_recordable(metric)
         for metric in metrics
     ) and type(response.duration_ms) is int and response.duration_ms >= 0
+
+
+def _metric_is_recordable(metric: TokenMetric) -> bool:
+    if metric.value is not None:
+        return type(metric.value) is int and metric.value >= 0
+    return isinstance(metric.unavailable_reason, str) and bool(metric.unavailable_reason)
 
 
 def _has_rollout_canary(

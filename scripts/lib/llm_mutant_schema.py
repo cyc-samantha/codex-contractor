@@ -7,7 +7,7 @@ from hashlib import sha256
 from typing import Any, Mapping
 
 from .dispatch_contract import DispatchContract
-from .llm_mutant_git import changed_details
+from .llm_mutant_git import ChangedHunk, changed_details
 from .llm_mutant_types import (
     EQUIVALENCE,
     LLM_MUTANT_CATEGORIES,
@@ -71,6 +71,10 @@ def validate_response(
 ) -> tuple[SemanticMutant, ...]:
     if not isinstance(response, LlmMutantResponse):
         raise LlmMutantSkip("runtime response schema is invalid")
+    if response.runtime_reason is not None:
+        if not isinstance(response.runtime_reason, str) or not response.runtime_reason:
+            raise LlmMutantSkip("runtime response schema is invalid")
+        raise LlmMutantSkip(response.runtime_reason)
     validate_metrics(response)
     if not isinstance(response.mutants, list):
         raise LlmMutantSkip("mutant output schema is invalid")
@@ -81,7 +85,7 @@ def validate_response(
     seen = set(mutation_keys(survivor_records))
     for item in response.mutants:
         mutant = parse_mutant(item, diff, contract, binding)
-        if mutant.equivalent != "no":
+        if mutant.equivalent == "yes":
             continue
         if mutation_key(mutant) not in seen:
             accepted.append(mutant)
@@ -97,7 +101,12 @@ def validate_metrics(response: LlmMutantResponse) -> None:
     for metric in (response.input_tokens, response.cached_input_tokens, response.output_tokens):
         if not isinstance(metric, TokenMetric):
             raise LlmMutantSkip("provider-token-telemetry-malformed")
-        if metric.value is None and not metric.unavailable_reason:
+        if metric.value is not None and (type(metric.value) is not int or metric.value < 0):
+            raise LlmMutantSkip("provider-token-telemetry-malformed")
+        if metric.value is None and (
+            not isinstance(metric.unavailable_reason, str)
+            or not metric.unavailable_reason
+        ):
             raise LlmMutantSkip("provider-token-telemetry-missing-reason")
     if response.output_tokens.value is not None and response.output_tokens.value > MAX_OUTPUT_TOKENS:
         raise LlmMutantSkip("output-token-cap-exceeded")
@@ -118,10 +127,13 @@ def parse_mutant(value: object, diff: str, contract: DispatchContract, binding) 
     mutated = snippet(value["mutated"], "mutated")
     if original == mutated:
         raise LlmMutantAdapterError("mutant must change source text")
-    locations, source = details[file]
-    if not range_in_locations(parsed_line_range, locations):
+    matching_hunks = tuple(
+        hunk for hunk in details[file]
+        if range_in_locations(parsed_line_range, hunk.locations)
+    )
+    if not matching_hunks:
         raise LlmMutantAdapterError("mutant line range is outside changed hunk")
-    if original not in source:
+    if not _original_is_in_hunk(original, parsed_line_range, matching_hunks):
         raise LlmMutantAdapterError("mutant original text does not match diff")
     category = choice(value["category"], LLM_MUTANT_CATEGORIES, "category")
     rationale = normalized_text(value["rationale"], "rationale")
@@ -137,3 +149,13 @@ def parse_mutant(value: object, diff: str, contract: DispatchContract, binding) 
 def _validate_shape(value: object, name: str) -> None:
     if not isinstance(value, Mapping) or set(value) != MUTANT_FIELDS:
         raise LlmMutantAdapterError(f"{name} schema is invalid")
+
+
+def _original_is_in_hunk(
+    original: str, parsed_line_range: str, hunks: tuple[ChangedHunk, ...]
+) -> bool:
+    bounds = [int(item) for item in parsed_line_range.split("-")]
+    for hunk in hunks:
+        if original in "\n".join(hunk.source):
+            return True
+    return False
