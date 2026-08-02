@@ -171,7 +171,9 @@ def test_implementation_plan_records_bundle_progress() -> None:
     assert "| T15 | Complete |" in plan
     assert "| T16 | Complete |" in plan
     assert "| T17 | Complete |" in plan
-    assert "| T18 | In review |" in plan
+    assert "| T18 | Complete |" in plan
+    assert "| T18A | Complete |" in plan
+    assert "| T18B | In review |" in plan
     assert "boundary-issued capability" in plan
 
 

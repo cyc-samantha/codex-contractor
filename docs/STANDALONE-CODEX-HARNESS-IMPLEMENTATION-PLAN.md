@@ -819,9 +819,9 @@ quality gate or weakening its fail-closed behavior.
 | T15 | Complete | Return findings to the bound engineer and targeted re-review to the bound raising reviewer, with shared-envelope coverage for each spawn; bundled with T14 in PR #36 | T14, T13B-T13D |
 | T16 | Complete | Add deterministic High Risk trigger routing and human-authorized downgrade enforcement in `scripts/lib/risk_routing.py`, with fail-closed contract tests; merged in PR #37 | T04 |
 | T17 | Complete | Add security-first review, re-review, sign-off, invalidation, and required shared-envelope coverage; merged in PR #38 | T13B-T13D, T15, T16 |
-| T18 | In review | Write verification evidence bound to reviewed HEAD; bundled with T18A in the same PR | T15 |
-| T18A | In review | Dispatch the deterministic verifier read-only only after its shared envelope proves actual provider tokens or null-with-reason; bundled with T18 in the same PR | T13B-T13D, T18 |
-| T18B | Planned | Replace the Claude-specific Tier 3.5 call with a fresh read-only Codex LLM-mutant adapter, activated only after telemetry gates pass | T13B-T13D, T18 |
+| T18 | Complete | Write verification evidence bound to reviewed HEAD; bundled with T18A in PR #40 | T15 |
+| T18A | Complete | Dispatch the deterministic verifier read-only only after its shared envelope proves actual provider tokens or null-with-reason; bundled with T18 in PR #40 | T13B-T13D, T18 |
+| T18B | In review | Replace the Claude-specific Tier 3.5 call with a fresh read-only Codex LLM-mutant adapter, activated only after telemetry gates pass; implementation in this PR | T13B-T13D, T18 |
 | T19 | Planned | Derive and run task-appropriate final verification commands | T18A |
 | T20 | Planned | Add one-attempt PR state and existing-PR reconciliation | T19 |
 | T21 | Planned | Attempt PR creation once and preserve manual handoff on failure | T20 |

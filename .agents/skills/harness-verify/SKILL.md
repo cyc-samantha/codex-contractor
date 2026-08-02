@@ -112,7 +112,7 @@ The manual fallback is approved as a gate-passing methodology — but the >= 70%
 
 ### 4.25. Run Tier 3.5: LLM-Mutant Pass (HARD GATE — ≥60% kill rate)
 
-> **Tier 3.5 is ADDITIVE to Tier 3, NOT a replacement.** Tier 3 retains its ≥70% rule-based mutation gate. Tier 3.5 layers a Claude-driven semantic-mutant pass on top: rule-based catches operator-shape bugs (5x cheaper); LLM-based catches intent-shape bugs (Wang et al.'s 46.3 pp lift on fault detection). Both gates must pass for VERIFIED. Iron Law 1's 70% mutation requirement on changed lines refers to Tier 3 — Tier 3.5 ships its own per-tier gate at 60%.
+> **Tier 3.5 is ADDITIVE to Tier 3, NOT a replacement.** Tier 3 retains its ≥70% rule-based mutation gate. Tier 3.5 layers a Codex-driven semantic-mutant pass on top: rule-based catches operator-shape bugs (5x cheaper); LLM-based catches intent-shape bugs (Wang et al.'s 46.3 pp lift on fault detection). Both gates must pass for VERIFIED. Iron Law 1's 70% mutation requirement on changed lines refers to Tier 3 — Tier 3.5 ships its own per-tier gate at 60%.
 
 **Prerequisite**: Tier 3 has produced a mutation report. Read the **latest Kill-Loop round's** survivor list to dedup (the `### Kill-Loop Round N` section with the highest N, if any Kill-Loop rounds exist; fall back to the Tier-3 baseline only when no Kill-Loop rounds are present) — Tier 3.5 does not re-propose mutations the latest Kill-Loop round already covered. Deduping against the stale Tier-3 baseline when Kill-Loop rounds exist would (a) miss mutants the loop did not kill, and (b) re-propose mutants the loop already killed.
 
@@ -123,9 +123,9 @@ The manual fallback is approved as a gate-passing methodology — but the >= 70%
 - `null-vs-empty` — `null`/`undefined`/`None` ↔ empty collection (`[]`, `""`, `{}`).
 - `async-without-await` — dropped `await` on a Promise/Future, dropped `.catch`/error path on async work.
 
-**Mutant generation (ONE Claude call per slice — NO retry):**
+**Mutant generation (ONE read-only Codex adapter call per slice — NO retry):**
 
-1. Issue ONE call to Claude with the changed-line diff, the 5 operator categories above, and the **latest Kill-Loop round's** survivor list (for dedup — or the Tier-3 baseline if no Kill-Loop rounds exist). Request 5–10 mutants — fewer is acceptable, more must be truncated to 10.
+1. Invoke `scripts/lib/llm_mutant_adapter.py` through one fresh, tool-free, network-free Codex runtime with the changed-line diff, the 5 operator categories above, and the **latest Kill-Loop round's** survivor list (for dedup — or the Tier-3 baseline if no Kill-Loop rounds exist). Request 5–10 mutants — fewer is acceptable; the strict schema rejects more than 10. The adapter reconstructs and digests the canonical diff from the bound repository identity and reviewed HEAD; caller-supplied diff text is untrusted and must match the reconstructed digest.
 2. Each mutant in the response carries the schema:
    ```
    {
@@ -323,7 +323,7 @@ The verifier MUST write `$state_dir/{task-id}/verification-evidence.json` at the
 
 **Verdict semantics**:
 - **VERIFIED** — Tier 3 (≥70% rule-based) AND Tier 3.5 (≥60% LLM-mutant) both PASS (or both N/A per the tier matrix). Tier 4 fired and PASSED (or all N/A). **AND Tier 5 PASSED where an oracle applies (or N/A when none applies).** Oracle-match is required for VERIFIED whenever a known-good external comparator exists for the change.
-- **VERIFIED_WITH_SKIP** — at least one tier was SKIP (Tier 3.5 SKIP on Claude-call failure; Tier 4 SKIP per E2E protocol prerequisites unmet; Tier 5 SKIP when an oracle applies but execution failed) AND no tier FAILED. Tier 5 = N/A (no oracle applies) does NOT cause VERIFIED_WITH_SKIP — it leaves the composite verdict unaffected. Call out any SKIP explicitly (PR body / HANDOFF.md) so it isn't silently swallowed.
+- **VERIFIED_WITH_SKIP** — at least one tier was SKIP (Tier 3.5 SKIP on Codex-adapter failure; Tier 4 SKIP per E2E protocol prerequisites unmet; Tier 5 SKIP when an oracle applies but execution failed) AND no tier FAILED. Tier 5 = N/A (no oracle applies) does NOT cause VERIFIED_WITH_SKIP — it leaves the composite verdict unaffected. Call out any SKIP explicitly (PR body / HANDOFF.md) so it isn't silently swallowed.
 - **UNVERIFIED** — any tier FAILED. Slice returns to Build with the failing tier's evidence (surviving-mutant list, failing E2E flows, **oracle divergence list**) as targeted gaps.
 
 [If VERIFIED_WITH_SKIP: name which tier was SKIP and why -- call this out explicitly in the PR/HANDOFF.md]
