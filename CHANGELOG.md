@@ -10,6 +10,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com).
 
 - Add deterministic High Risk trigger routing with auditable human-authorized downgrade decisions
 - Add security-first review sign-off ordering, telemetry binding, and sensitive-change invalidation
+- Add atomic verification evidence bound to reviewed and current Git HEAD
+- Add read-only deterministic verifier dispatch gated by durable spawn telemetry
 - Add an identity- and model-bound read-only Code Reviewer dispatch and targeted re-review loop with fresh telemetry evidence
 - Add an orchestrator protected-write boundary whose Software Engineer dispatch capability is issued only after a correlated telemetry canary and activation record are durably read back
 - Add an inactive telemetry-gated Software Engineer dispatch facade with deterministic execution profiles and durable spawn accounting, pending the T13A activation prerequisite
