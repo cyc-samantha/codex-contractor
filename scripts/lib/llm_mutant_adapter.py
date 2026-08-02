@@ -216,13 +216,25 @@ def _has_rollout_canary(
     telemetry: SpawnTelemetryStore, task_id: str, run_id: str, event_id: str
 ) -> bool:
     try:
-        return any(
-            event.event_id == event_id and event.task_id == task_id and event.run_id == run_id
-            and event.role == "software_engineer"
-            for event in telemetry.read_events()
-        )
+        return any(_is_correlated_canary(event, task_id, run_id, event_id)
+                   for event in telemetry.read_events())
     except SpawnTelemetryError:
         return False
+
+
+def _is_correlated_canary(event, task_id: str, run_id: str, event_id: str) -> bool:
+    identity_matches = (
+        event.event_id == event_id and event.task_id == task_id
+        and event.run_id == run_id and event.role == "software_engineer"
+    )
+    profile_matches = (
+        event.requested_model == event.actual_model
+        and event.requested_reasoning_effort == event.actual_reasoning_effort
+    )
+    metrics_known = all(metric.value is not None for metric in (
+        event.input_tokens, event.cached_input_tokens, event.output_tokens
+    ))
+    return identity_matches and profile_matches and metrics_known and event.retry_cycle_id == "canary"
 
 
 def _require_target(state: tuple[str, bool], reviewed_head: str) -> None:

@@ -110,7 +110,7 @@ def seed_canary(store: SpawnTelemetryStore) -> None:
             "software_engineer-01", "session-software_engineer-01", None,
             "gpt-5.6-terra", "gpt-5.6-terra", "high", "high",
             TokenMetric(10, None), TokenMetric(0, None), TokenMetric(20, None),
-            100, "initial",
+            100, "canary",
         )
     )
 
