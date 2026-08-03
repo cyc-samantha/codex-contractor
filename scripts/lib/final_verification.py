@@ -11,6 +11,7 @@ import selectors
 import signal
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 import resource
@@ -89,7 +90,7 @@ class CommandExecutionRequest:
     write_protected: bool
     deadline: float | None = None
     output_limit_bytes: int = MAX_OUTPUT_BYTES
-    trusted_tool_roots: tuple[Path, ...] = _TRUSTED_COMMAND_ROOTS
+    trusted_tool_roots: tuple[Path, ...] | None = None
     trusted_support_roots: tuple[Path, ...] = ()
 
 
@@ -461,7 +462,7 @@ def _command_path(
 def _trusted_tool_roots(
     values: Sequence[Path] | None, forbidden_worktree: Path | None = None
 ) -> tuple[Path, ...]:
-    roots = _TRUSTED_COMMAND_ROOTS if values is None else tuple(values)
+    roots = _default_trusted_tool_roots() if values is None else tuple(values)
     normalized: list[Path] = []
     for root in roots:
         path = Path(root).resolve()
@@ -478,6 +479,16 @@ def _trusted_tool_roots(
     if not normalized:
         raise FinalVerificationError("trusted tool roots must be non-empty")
     return tuple(normalized)
+
+
+def _default_trusted_tool_roots() -> tuple[Path, ...]:
+    runtime_bin = Path(sys.executable).resolve().parent
+    if runtime_bin.name != "bin" or not runtime_bin.is_dir():
+        return _TRUSTED_COMMAND_ROOTS
+    remaining_roots = tuple(
+        root for root in _TRUSTED_COMMAND_ROOTS if root != runtime_bin
+    )
+    return (runtime_bin, *remaining_roots)
 
 
 def _trusted_support_roots(

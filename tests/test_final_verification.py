@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+import os
 from pathlib import Path
 import subprocess
+import sys
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -399,6 +401,18 @@ def test_command_path_ignores_ambient_path(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setenv("PATH", "/tmp/attacker")
 
     assert "/tmp/attacker" not in _command_path(None)
+
+
+def test_default_tool_roots_include_python_runtime_bin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    runtime_bin = tmp_path / "venv" / "bin"
+    runtime_bin.mkdir(parents=True)
+    runtime = runtime_bin / "python"
+    runtime.write_text("runtime")
+    monkeypatch.setattr(sys, "executable", str(runtime))
+
+    assert str(runtime_bin.resolve()) in _command_path(None).split(os.pathsep)
 
 
 def test_command_path_accepts_only_explicit_tool_roots(tmp_path: Path) -> None:
