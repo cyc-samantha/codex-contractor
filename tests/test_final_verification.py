@@ -415,6 +415,16 @@ def test_default_tool_roots_include_python_runtime_bin(
     assert str(runtime_bin.resolve()) in _command_path(None).split(os.pathsep)
 
 
+def test_default_tool_roots_include_python_prefix_bin(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    prefix_bin = tmp_path / "venv" / "bin"
+    prefix_bin.mkdir(parents=True)
+    monkeypatch.setattr(sys, "prefix", str(prefix_bin.parent))
+
+    assert str(prefix_bin.resolve()) in _command_path(None).split(os.pathsep)
+
+
 def test_command_path_accepts_only_explicit_tool_roots(tmp_path: Path) -> None:
     tool_root = tmp_path / "bin"
     tool_root.mkdir()

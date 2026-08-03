@@ -482,13 +482,15 @@ def _trusted_tool_roots(
 
 
 def _default_trusted_tool_roots() -> tuple[Path, ...]:
-    runtime_bin = Path(sys.executable).resolve().parent
-    if runtime_bin.name != "bin" or not runtime_bin.is_dir():
-        return _TRUSTED_COMMAND_ROOTS
-    remaining_roots = tuple(
-        root for root in _TRUSTED_COMMAND_ROOTS if root != runtime_bin
+    candidates = (
+        Path(sys.executable).resolve().parent,
+        Path(sys.prefix).resolve() / "bin",
     )
-    return (runtime_bin, *remaining_roots)
+    roots = list(_TRUSTED_COMMAND_ROOTS)
+    for candidate in candidates:
+        if candidate.name == "bin" and candidate.is_dir() and candidate not in roots:
+            roots.insert(0, candidate)
+    return tuple(roots)
 
 
 def _trusted_support_roots(
