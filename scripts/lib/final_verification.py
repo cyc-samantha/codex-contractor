@@ -483,7 +483,7 @@ def _trusted_tool_roots(
 
 def _default_trusted_tool_roots() -> tuple[Path, ...]:
     candidates = (
-        Path(sys.executable).resolve().parent,
+        Path(sys.executable).absolute().parent,
         Path(sys.prefix).resolve() / "bin",
     )
     roots = list(_TRUSTED_COMMAND_ROOTS)

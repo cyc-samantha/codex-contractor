@@ -407,9 +407,13 @@ def test_default_tool_roots_include_python_runtime_bin(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     runtime_bin = tmp_path / "venv" / "bin"
+    base_bin = tmp_path / "base" / "bin"
     runtime_bin.mkdir(parents=True)
+    base_bin.mkdir(parents=True)
+    base_runtime = base_bin / "python"
+    base_runtime.write_text("runtime")
     runtime = runtime_bin / "python"
-    runtime.write_text("runtime")
+    runtime.symlink_to(base_runtime)
     monkeypatch.setattr(sys, "executable", str(runtime))
 
     assert str(runtime_bin.resolve()) in _command_path(None).split(os.pathsep)
