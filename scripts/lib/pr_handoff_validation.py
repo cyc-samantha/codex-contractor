@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 import re
+from urllib.parse import urlsplit
 
 from scripts.lib.pr_handoff_state import (
     ExistingPullRequest,
@@ -30,7 +31,7 @@ def _validate_structure(state: PrHandoffState) -> None:
 
 def _context_from_state(state: PrHandoffState) -> PullRequestContext:
     return PullRequestContext(
-        state.task_id, state.repository, state.branch, state.base_head,
+        state.task_id, state.run_id, state.repository, state.branch, state.base_head,
         state.target_head, state.title, state.body,
     )
 
@@ -52,13 +53,13 @@ def _validate_outcome(state: PrHandoffState) -> None:
 
 
 def _require_outcome(state: PrHandoffState) -> None:
-    outcomes = {"NOT_ATTEMPTED", "EXISTING_PR", "PR_CREATED", "PR_CREATION_FAILED"}
+    outcomes = {"NOT_ATTEMPTED", "EXISTING_PR", "PR_ATTEMPT_RESERVED", "PR_CREATED", "PR_CREATION_FAILED"}
     if state.outcome not in outcomes:
         raise PrHandoffError("unsupported PR handoff outcome")
 
 
 def _require_outcome_attempt_pair(state: PrHandoffState) -> None:
-    creation_outcome = {"PR_CREATED", "PR_CREATION_FAILED"}
+    creation_outcome = {"PR_ATTEMPT_RESERVED", "PR_CREATED", "PR_CREATION_FAILED"}
     if state.attempt_count == 0 and state.outcome in creation_outcome:
         raise PrHandoffError("zero attempts cannot have a creation outcome")
     if state.attempt_count and state.outcome == "NOT_ATTEMPTED":
@@ -74,7 +75,7 @@ def _validate_failure_category(state: PrHandoffState) -> None:
 
 def _validate_pr_identity(state: PrHandoffState) -> None:
     _validate_pr_number(state.pr_number)
-    _validate_pr_url(state.pr_url)
+    _validate_pr_url(state.pr_url, state.pr_number or 0)
     has_identity = state.pr_number is not None and state.pr_url is not None
     needs_identity = state.outcome in {"PR_CREATED", "EXISTING_PR"}
     if has_identity != needs_identity:
@@ -86,9 +87,21 @@ def _validate_pr_number(value: object) -> None:
         raise PrHandoffError("PR number is invalid")
 
 
-def _validate_pr_url(value: object) -> None:
-    if value is not None and not _valid_text(value):
+def _validate_pr_url(value: object, number: int) -> None:
+    if value is not None and not _valid_pr_url(value, number):
         raise PrHandoffError("PR URL is invalid")
+
+
+def _valid_pr_url(value: object, number: int) -> bool:
+    if not _valid_text(value):
+        return False
+    parsed = urlsplit(value)
+    return parsed.scheme == "https" and bool(parsed.netloc) and _url_has_number(parsed.path, number)
+
+
+def _url_has_number(path: str, number: int) -> bool:
+    suffix = str(number) if number else r"[0-9]+"
+    return bool(re.search(r"/pull/" + suffix + r"/?$", path))
 
 
 def _validate_retry_authorization(state: PrHandoffState) -> None:
@@ -107,7 +120,7 @@ def _require_authorization_pair(state: PrHandoffState) -> None:
 
 
 def validate_context(request: PullRequestContext) -> None:
-    _require_text_fields(request, ("task_id", "repository", "branch", "title", "body"))
+    _require_text_fields(request, ("task_id", "run_id", "repository", "branch", "title", "body"))
     if not Path(request.repository).is_absolute():
         raise PrHandoffError("repository must be absolute")
     _validate_head(request.base_head, "base_head")
@@ -142,18 +155,20 @@ def _valid_text(value: object) -> bool:
 def validate_pull_request(
     pull_request: ExistingPullRequest, request: PullRequestContext
 ) -> None:
-    _require_text_fields(pull_request, ("repository", "task_id", "branch", "url"))
+    _require_text_fields(pull_request, ("repository", "task_id", "run_id", "branch", "url"))
     _validate_head(pull_request.base_head, "existing PR base_head")
     _validate_head(pull_request.target_head, "existing PR target_head")
     if type(pull_request.number) is not int or pull_request.number < 1:
         raise PrHandoffError("existing PR number is invalid")
+    if not _valid_pr_url(pull_request.url, pull_request.number):
+        raise PrHandoffError("existing PR URL is invalid")
     require_matching_identity(pull_request, request)
 
 
 def require_matching_identity(
     pull_request: ExistingPullRequest, request: PullRequestContext
 ) -> None:
-    fields = ("repository", "task_id", "branch", "base_head", "target_head")
+    fields = ("repository", "task_id", "run_id", "branch", "base_head", "target_head")
     if any(getattr(pull_request, field) != getattr(request, field) for field in fields):
         raise PrHandoffError("existing PR identity does not match request")
 
@@ -161,7 +176,7 @@ def require_matching_identity(
 def require_same_context(
     state: PrHandoffState, request: PullRequestContext, allow_target_change: bool = False
 ) -> None:
-    fields = ("task_id", "repository", "branch", "base_head")
+    fields = ("task_id", "run_id", "repository", "branch", "base_head")
     if any(getattr(state, field) != getattr(request, field) for field in fields):
         raise PrHandoffError("PR handoff state identity does not match request")
     if not allow_target_change and state.target_head != request.target_head:

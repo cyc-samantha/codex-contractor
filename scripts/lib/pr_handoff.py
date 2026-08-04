@@ -12,7 +12,6 @@ from scripts.lib.pr_handoff_state import (
     PrHandoffStore,
     PullRequestContext,
     carry_retry_authorization,
-    parse_state,
     replace_state,
     timestamp,
 )
@@ -43,8 +42,9 @@ class PrHandoffResult:
 class PrHandoffService:
     """Reconcile or create one task-bound pull request."""
 
-    def __init__(self, path) -> None:
-        self.store = PrHandoffStore(path)
+    def __init__(self, task_id: str, harness_data=None) -> None:
+        self.task_id = task_id
+        self.store = PrHandoffStore(task_id, harness_data)
 
     def submit(
         self,
@@ -54,6 +54,8 @@ class PrHandoffService:
         create: Callable[[], ExistingPullRequest],
     ) -> PrHandoffResult:
         _validate_request(request)
+        if request.task_id != self.task_id:
+            raise PrHandoffError("request task_id does not match handoff store")
         existing = find_existing()
         if existing is not None:
             return self._reconcile(request, existing)
@@ -90,6 +92,8 @@ class PrHandoffService:
     ) -> PrHandoffResult:
         previous = self.store.read_optional()
         attempt = _next_attempt(previous, request)
+        reserved = _state_for_pr(request, attempt, "PR_ATTEMPT_RESERVED", None, previous)
+        self.store.write(reserved)
         try:
             created = create()
             _validate_existing(created, request)
@@ -152,7 +156,7 @@ def _failure_state(request, attempt, category, previous):
 
 def _state_for_pr(request, attempt, outcome, pull_request, previous):
     identity = (pull_request.number, pull_request.url) if pull_request else (None, None)
-    state = PrHandoffState(1, request.task_id, request.repository, request.branch,
+    state = PrHandoffState(1, request.task_id, request.run_id, request.repository, request.branch,
                            request.base_head, request.target_head, attempt, outcome,
                            timestamp(), *identity, request.title, request.body,
                            None, None, None)
@@ -170,7 +174,7 @@ def _result(status, state, pull_request, request=None):
 
 def _require_category(category):
     if not _valid_text(category):
-        raise PrHandoffError("PR creation failure category is required")
+        return "provider-error"
     return category
 
 

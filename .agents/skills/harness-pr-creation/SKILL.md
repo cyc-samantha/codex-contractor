@@ -75,6 +75,18 @@ Cross-references: `hooks/auto-pr.sh` performs an advisory read of the same token
 
 `hooks/quality-gate.sh` runs on `gh pr create` and includes the new `_qg_check_freshness` check (extension landed in this slice). The check reads `$state_dir/{task-id}/verification-evidence.json` written by `/harness:verify` Step 6 and FAILs (rc=1 → quality-gate exit 2) when the recorded `git_head` does not match the current worktree HEAD, the file is missing, or the verdict is not `VERIFIED` / `VERIFIED_WITH_SKIP`. Operators must re-run `/harness:verify` before re-attempting `gh pr create` in that case.
 
+## Canonical PR Handoff Boundary
+
+Every PR provider path (`gh pr create`, `gh api .../pulls`, or an MCP
+`create_pull_request` call) MUST be supplied as the injected creator callback
+to `scripts.lib.pr_creation.create_pull_request`. Construct
+`PrHandoffService(task_id, HARNESS_DATA)` for the active task and call the
+entry point after the review and fresh-verification gates pass. The service
+performs read-only existing-PR reconciliation, reserves the one automatic
+attempt before invoking the provider, records success or failure, and returns
+copy-ready manual content on failure. A direct provider call bypassing this
+entry point is not an approved PR workflow.
+
 ## Worktree Precondition (HARD GATE)
 
 This skill mutates HEAD-bearing state (creates branches, runs `gh pr create` which pushes the current branch). It MUST run inside a worktree, never against REPO_ROOT directly. Resolve the worktree path at skill entry:

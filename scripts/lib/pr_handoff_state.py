@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 
+from scripts.lib.pipeline_state_paths import PipelineStatePathError, canonical_pipeline_path
 from scripts.lib.writer_claim_io import open_harness_data, open_optional_regular, read_json, write_json
 
 
@@ -18,6 +19,7 @@ class PrHandoffError(ValueError):
 @dataclass(frozen=True)
 class PullRequestContext:
     task_id: str
+    run_id: str
     repository: str
     branch: str
     base_head: str
@@ -30,6 +32,7 @@ class PullRequestContext:
 class ExistingPullRequest:
     repository: str
     task_id: str
+    run_id: str
     branch: str
     base_head: str
     target_head: str
@@ -41,6 +44,7 @@ class ExistingPullRequest:
 class PrHandoffState:
     schema_version: int
     task_id: str
+    run_id: str
     repository: str
     branch: str
     base_head: str
@@ -63,9 +67,11 @@ class PrHandoffState:
 class PrHandoffStore:
     """Read and atomically write one task's PR handoff state."""
 
-    def __init__(self, path: Path) -> None:
-        if not path.is_absolute() or ".." in path.parts or not path.name:
-            raise PrHandoffError("PR handoff path must be absolute and normalized")
+    def __init__(self, task_id: str, harness_data: Path | None = None) -> None:
+        try:
+            path = canonical_pipeline_path(task_id, harness_data).with_name("pr-handoff.json")
+        except PipelineStatePathError as error:
+            raise PrHandoffError(str(error)) from error
         self.path = path
 
     def read(self) -> PrHandoffState:
@@ -93,9 +99,17 @@ class PrHandoffStore:
     def _open_parent(self, create: bool = False) -> tuple[int, str]:
         try:
             parent = open_harness_data(self.path.parent, create=create)
+        except FileNotFoundError as error:
+            raise _parent_error(create) from error
         except OSError as error:
             raise PrHandoffError("PR handoff state parent is untrusted") from error
         return parent, self.path.name
+
+
+def _parent_error(create: bool) -> PrHandoffError:
+    if not create:
+        return PrHandoffError("PR handoff state is missing")
+    return PrHandoffError("PR handoff state parent is untrusted")
 
 
 def parse_state(value: object) -> PrHandoffState:
