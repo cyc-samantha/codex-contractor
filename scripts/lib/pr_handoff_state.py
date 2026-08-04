@@ -99,11 +99,15 @@ class PrHandoffStore:
     def _open_parent(self, create: bool = False) -> tuple[int, str]:
         try:
             parent = open_harness_data(self.path.parent, create=create)
-        except FileNotFoundError as error:
-            raise _parent_error(create) from error
         except OSError as error:
-            raise PrHandoffError("PR handoff state parent is untrusted") from error
+            raise _parent_open_error(create, error) from error
         return parent, self.path.name
+
+
+def _parent_open_error(create: bool, error: OSError) -> PrHandoffError:
+    if isinstance(error, FileNotFoundError):
+        return _parent_error(create)
+    return PrHandoffError("PR handoff state parent is untrusted")
 
 
 def _parent_error(create: bool) -> PrHandoffError:
