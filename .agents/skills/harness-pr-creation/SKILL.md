@@ -75,6 +75,18 @@ Cross-references: `hooks/auto-pr.sh` performs an advisory read of the same token
 
 `hooks/quality-gate.sh` runs on `gh pr create` and includes the new `_qg_check_freshness` check (extension landed in this slice). The check reads `$state_dir/{task-id}/verification-evidence.json` written by `/harness:verify` Step 6 and FAILs (rc=1 → quality-gate exit 2) when the recorded `git_head` does not match the current worktree HEAD, the file is missing, or the verdict is not `VERIFIED` / `VERIFIED_WITH_SKIP`. Operators must re-run `/harness:verify` before re-attempting `gh pr create` in that case.
 
+## Canonical PR Handoff Boundary
+
+Every PR provider path (`gh pr create`, `gh api .../pulls`, or an MCP
+`create_pull_request` call) MUST be supplied as the injected creator callback
+to `scripts.lib.pr_creation.create_pull_request`. Construct
+`PrHandoffService(task_id, HARNESS_DATA)` for the active task and call the
+entry point after the review and fresh-verification gates pass. The service
+performs read-only existing-PR reconciliation, reserves the one automatic
+attempt before invoking the provider, records success or failure, and returns
+copy-ready manual content on failure. A direct provider call bypassing this
+entry point is not an approved PR workflow.
+
 ## Worktree Precondition (HARD GATE)
 
 This skill mutates HEAD-bearing state (creates branches, runs `gh pr create` which pushes the current branch). It MUST run inside a worktree, never against REPO_ROOT directly. Resolve the worktree path at skill entry:
@@ -106,8 +118,9 @@ git -C "$WORKTREE" diff --stat
 
 ```bash
 # Complete PR workflow (must run from a worktree — see Worktree Precondition)
-(cd "$WORKTREE" && git push -u origin feature/my-feature && \
- gh pr create --title "..." --body "...")
+(cd "$WORKTREE" && git push -u origin feature/my-feature)
+# Then invoke the canonical Python entry point with provider callbacks injected
+# by the caller; never call a PR provider directly from this skill.
 ```
 
 ## Step-by-Step Workflow
@@ -240,33 +253,13 @@ if [ -x "${CLAUDE_PLUGIN_ROOT:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}}/skills/inter
   STAMP="$(bash "${CLAUDE_PLUGIN_ROOT:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}}/skills/internal-eval/score/stamp-pr-body.sh" 2>/dev/null || true)"
 fi
 
-# Create PR with detailed description + eval baseline stamp.
-# The (cd "$WORKTREE" && ...) wrapper is required by the main-branch invariant
-# guard — bare `gh pr create` is blocked by hooks/main-branch-guard.sh.
-(cd "$WORKTREE" && gh pr create \
-  --title "type(scope): description (TICKET-123)" \
-  --body "$(cat <<EOF
-## Summary
-[3-5 sentence overview of what changed and why]
-
-**Changes:**
-- [List of major changes with file types]
-
-**Coverage:** [X%] (meets/exceeds threshold)
-
-## Testing
-- [Test category 1]
-- [Test category 2]
-- [Coverage details]
-
-## Related
-Closes [TICKET-XXX or issue number]
-
-**Pipeline cost:** _pending CI_
-
-${STAMP}
-EOF
-)")
+# Submit through the canonical handoff boundary. In the caller's Python
+# adapter, construct `TaskPullRequestInput` with the task/run identity,
+# approved HEADs, title/body, then invoke `submit_task_pull_request(...)` with
+# concrete `find_existing` / `create` provider callbacks. Those callbacks may
+# use gh, gh api, or MCP, but this skill never invokes them. On
+# `PR_CREATION_FAILED`, print the returned copy-ready title and body and stop;
+# do not retry without recorded human authorization.
 ```
 
 The eval-baseline stamp is appended to every PR body so reviewers see the latest suite pass rate + `harness_ref` SHA without per-PR reruns. See `~/.claude/skills/internal-eval/score/stamp-pr-body.sh`.
@@ -441,7 +434,10 @@ When user says "create PR", execute autonomously:
    WHY: `gh api .../pulls` bypasses the Bash hook at `hooks/quality-gate.sh:23`; this
    step gates ALL PR paths (gh pr create, gh api, MCP). GP-C1, issue #33106.
 5. Push to remote with `-u` flag
-6. Create GitHub PR via `(cd "$WORKTREE" && gh pr create ...)` — the `cd "$WORKTREE"` prefix is required by the main-branch invariant guard
+6. Invoke `scripts.lib.pr_creation.create_pull_request` with the approved
+   task-bound request and injected `find_existing` / `create` provider
+   callbacks. The handoff boundary owns the one-attempt allowance and returns
+   the PR URL or copy-ready manual content.
 7. Return PR URL to user
 
 **Don't ask** -- just do it with reasonable defaults based on commit messages, files changed, and tests added.
@@ -455,7 +451,9 @@ Review output, fix failures, re-run until passing.
 Create feature branch, move changes to it.
 
 ### PR creation fails (gh CLI)
-Verify `gh auth status`, re-authenticate if needed, retry.
+Return the recorded copy-ready title/body and stop. A second provider attempt
+requires `authorize_retry(...)` with explicit human authorization persisted in
+the task's handoff state; never retry automatically.
 
 ### Remote branch conflicts
 Pull latest main, rebase feature branch, resolve conflicts, push with `--force-with-lease`.
