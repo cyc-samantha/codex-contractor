@@ -253,22 +253,13 @@ if [ -x "${CLAUDE_PLUGIN_ROOT:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}}/skills/inter
   STAMP="$(bash "${CLAUDE_PLUGIN_ROOT:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}}/skills/internal-eval/score/stamp-pr-body.sh" 2>/dev/null || true)"
 fi
 
-# Submit through the canonical handoff boundary. The caller supplies
-# `provider.find_existing` and `provider.create` as injected callbacks; those
-# callbacks may use gh, gh api, or MCP, but this skill never invokes them.
-python3 - <<'PY'
-from scripts.lib.pr_creation import create_pull_request
-
-result = create_pull_request(
-    handoff,
-    request,
-    find_existing=provider.find_existing,
-    create=provider.create,
-)
-if result.status == "PR_CREATION_FAILED":
-    print(result.manual_title)
-    print(result.manual_body)
-PY
+# Submit through the canonical handoff boundary. In the caller's Python
+# adapter, construct `TaskPullRequestInput` with the task/run identity,
+# approved HEADs, title/body, then invoke `submit_task_pull_request(...)` with
+# concrete `find_existing` / `create` provider callbacks. Those callbacks may
+# use gh, gh api, or MCP, but this skill never invokes them. On
+# `PR_CREATION_FAILED`, print the returned copy-ready title and body and stop;
+# do not retry without recorded human authorization.
 ```
 
 The eval-baseline stamp is appended to every PR body so reviewers see the latest suite pass rate + `harness_ref` SHA without per-PR reruns. See `~/.claude/skills/internal-eval/score/stamp-pr-body.sh`.
@@ -460,7 +451,9 @@ Review output, fix failures, re-run until passing.
 Create feature branch, move changes to it.
 
 ### PR creation fails (gh CLI)
-Verify `gh auth status`, re-authenticate if needed, retry.
+Return the recorded copy-ready title/body and stop. A second provider attempt
+requires `authorize_retry(...)` with explicit human authorization persisted in
+the task's handoff state; never retry automatically.
 
 ### Remote branch conflicts
 Pull latest main, rebase feature branch, resolve conflicts, push with `--force-with-lease`.

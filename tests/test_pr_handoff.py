@@ -15,7 +15,11 @@ from scripts.lib.pr_handoff import (
     PrHandoffState,
     PullRequestContext,
 )
-from scripts.lib.pr_creation import create_pull_request
+from scripts.lib.pr_creation import (
+    TaskPullRequestInput,
+    create_pull_request,
+    submit_task_pull_request,
+)
 
 
 REPOSITORY = "/repo/codex-harness"
@@ -153,6 +157,20 @@ def test_canonical_pr_creation_entrypoint_uses_handoff_service(tmp_path: Path) -
 
     assert result.status == "PR_CREATED"
     assert result.state.outcome == "PR_CREATED"
+
+
+def test_task_adapter_constructs_request_and_handoff_service(tmp_path: Path) -> None:
+    request = context()
+    result = submit_task_pull_request(
+        TaskPullRequestInput(**request.__dict__),
+        harness_data=tmp_path,
+        find_existing=lambda: None,
+        create=lambda: pull_request(request),
+    )
+
+    assert result.status == "PR_CREATED"
+    assert result.state.task_id == request.task_id
+    assert result.state.run_id == request.run_id
 
 
 def test_handoff_state_path_is_derived_from_task_identity(tmp_path: Path) -> None:
