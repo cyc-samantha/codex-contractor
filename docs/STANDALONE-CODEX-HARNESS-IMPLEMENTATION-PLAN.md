@@ -781,8 +781,9 @@ tests/test_llm_mutant_adapter.py
 tests/test_spawn_telemetry.py
 ```
 
-T18B is implemented and merged in PR #41. T19 is the next capability task:
-derive and run task-appropriate final verification commands.
+T18B is implemented and merged in PR #41. T19 final verification is
+implemented and merged in PR #42. T20 and T21 are the next bundled capability:
+one-attempt PR state, existing-PR reconciliation, and manual failure handoff.
 
 ### Resolved delivery blocker: PR quality-gate helper resolution
 
@@ -821,9 +822,9 @@ quality gate or weakening its fail-closed behavior.
 | T18 | Complete | Write verification evidence bound to reviewed HEAD; bundled with T18A in PR #40 | T15 |
 | T18A | Complete | Dispatch the deterministic verifier read-only only after its shared envelope proves actual provider tokens or null-with-reason; bundled with T18 in PR #40 | T13B-T13D, T18 |
 | T18B | Complete | Replace the Claude-specific Tier 3.5 call with a fresh read-only Codex LLM-mutant adapter, activated only after telemetry gates pass; merged in PR #41 | T13B-T13D, T18 |
-| T19 | Planned | Derive and run task-appropriate final verification commands | T18A |
-| T20 | Planned | Add one-attempt PR state and existing-PR reconciliation | T19 |
-| T21 | Planned | Attempt PR creation once and preserve manual handoff on failure | T20 |
+| T19 | Complete | Derive and run task-appropriate final verification commands; merged in PR #42 | T18A |
+| T20 | Complete | Add one-attempt PR state and existing-PR reconciliation | T19 |
+| T21 | Complete | Attempt PR creation once and preserve manual handoff on failure | T20 |
 | T22 | Planned | Enrich reconciled telemetry with verdict, findings, retries, learning attribution, and quality breakdowns by role/effort | T13B-T13D |
 | T23 | Planned | Append observations automatically without promoting instincts | T22 |
 | T24 | Planned | Add the token/learning/model-effort evaluation framework and report template over enriched PR aggregates | T22, T23 |

@@ -28,6 +28,7 @@ on:
       - "tests/test_final_verification.py"
       - "tests/test_orchestrator_write_boundary.py"
       - "tests/test_pipeline_state.py"
+      - "tests/test_pr_handoff.py"
       - "tests/test_review_evidence.py"
       - "tests/test_review_workflow.py"
       - "tests/test_software_engineer_dispatch.py"
