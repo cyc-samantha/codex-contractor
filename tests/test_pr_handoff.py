@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import replace
 from pathlib import Path
+import re
 
 import pytest
 
@@ -158,6 +159,14 @@ def test_handoff_state_path_is_derived_from_task_identity(tmp_path: Path) -> Non
     assert service(tmp_path).store.path == (
         tmp_path / "pipeline-state" / "task-20" / "pr-handoff.json"
     )
+
+
+def test_pr_skill_has_no_direct_provider_command_in_executable_blocks() -> None:
+    skill = Path(".agents/skills/harness-pr-creation/SKILL.md").read_text()
+    code_blocks = "\n".join(re.findall(r"```(?:bash|python)\n(.*?)```", skill, re.DOTALL))
+
+    assert "scripts.lib.pr_creation.create_pull_request" in skill
+    assert not re.search(r"^\s*(?:\([^\n]*&&\s*)?gh\s+pr\s+create", code_blocks, re.MULTILINE)
 
 
 @pytest.mark.parametrize("field", ["repository", "task_id", "branch", "base_head", "target_head"])

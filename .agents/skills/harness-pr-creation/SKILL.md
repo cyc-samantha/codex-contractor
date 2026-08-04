@@ -118,8 +118,9 @@ git -C "$WORKTREE" diff --stat
 
 ```bash
 # Complete PR workflow (must run from a worktree — see Worktree Precondition)
-(cd "$WORKTREE" && git push -u origin feature/my-feature && \
- gh pr create --title "..." --body "...")
+(cd "$WORKTREE" && git push -u origin feature/my-feature)
+# Then invoke the canonical Python entry point with provider callbacks injected
+# by the caller; never call a PR provider directly from this skill.
 ```
 
 ## Step-by-Step Workflow
@@ -252,33 +253,22 @@ if [ -x "${CLAUDE_PLUGIN_ROOT:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}}/skills/inter
   STAMP="$(bash "${CLAUDE_PLUGIN_ROOT:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}}/skills/internal-eval/score/stamp-pr-body.sh" 2>/dev/null || true)"
 fi
 
-# Create PR with detailed description + eval baseline stamp.
-# The (cd "$WORKTREE" && ...) wrapper is required by the main-branch invariant
-# guard — bare `gh pr create` is blocked by hooks/main-branch-guard.sh.
-(cd "$WORKTREE" && gh pr create \
-  --title "type(scope): description (TICKET-123)" \
-  --body "$(cat <<EOF
-## Summary
-[3-5 sentence overview of what changed and why]
+# Submit through the canonical handoff boundary. The caller supplies
+# `provider.find_existing` and `provider.create` as injected callbacks; those
+# callbacks may use gh, gh api, or MCP, but this skill never invokes them.
+python3 - <<'PY'
+from scripts.lib.pr_creation import create_pull_request
 
-**Changes:**
-- [List of major changes with file types]
-
-**Coverage:** [X%] (meets/exceeds threshold)
-
-## Testing
-- [Test category 1]
-- [Test category 2]
-- [Coverage details]
-
-## Related
-Closes [TICKET-XXX or issue number]
-
-**Pipeline cost:** _pending CI_
-
-${STAMP}
-EOF
-)")
+result = create_pull_request(
+    handoff,
+    request,
+    find_existing=provider.find_existing,
+    create=provider.create,
+)
+if result.status == "PR_CREATION_FAILED":
+    print(result.manual_title)
+    print(result.manual_body)
+PY
 ```
 
 The eval-baseline stamp is appended to every PR body so reviewers see the latest suite pass rate + `harness_ref` SHA without per-PR reruns. See `~/.claude/skills/internal-eval/score/stamp-pr-body.sh`.
@@ -453,7 +443,10 @@ When user says "create PR", execute autonomously:
    WHY: `gh api .../pulls` bypasses the Bash hook at `hooks/quality-gate.sh:23`; this
    step gates ALL PR paths (gh pr create, gh api, MCP). GP-C1, issue #33106.
 5. Push to remote with `-u` flag
-6. Create GitHub PR via `(cd "$WORKTREE" && gh pr create ...)` — the `cd "$WORKTREE"` prefix is required by the main-branch invariant guard
+6. Invoke `scripts.lib.pr_creation.create_pull_request` with the approved
+   task-bound request and injected `find_existing` / `create` provider
+   callbacks. The handoff boundary owns the one-attempt allowance and returns
+   the PR URL or copy-ready manual content.
 7. Return PR URL to user
 
 **Don't ask** -- just do it with reasonable defaults based on commit messages, files changed, and tests added.
