@@ -8,6 +8,7 @@ import tempfile
 from pathlib import Path
 
 from builder_guardian_contract import digest
+from builder_guardian_evidence import parse_builder_guardian_verification
 from builder_guardian_state import PipelineState, StateError, git, now
 
 
@@ -64,6 +65,7 @@ def write_evidence(state: PipelineState, target: str, results: list[dict]) -> No
                 "repository": str(state.repo), "worktree": state.data["worktree"],
                 "approved_commit": target, "timestamp": now(), "commands": results,
                 "status": "PASSED" if all(item["exit_code"] == 0 for item in results) else "FAILED"}
+    parse_builder_guardian_verification(evidence)
     (state.directory / "verification.json").write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n")
     state.data["verification_hash"] = digest(evidence)
 

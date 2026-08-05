@@ -11,6 +11,7 @@ from pathlib import Path
 
 from builder_guardian_contract import ContractError, load_contract
 from builder_guardian_builder import run_builder
+from builder_guardian_evidence import BuilderGuardianEvidenceError
 from builder_guardian_review import run_guardian
 from builder_guardian_state import PipelineState, StateError
 from builder_guardian_verify import run_verification
@@ -100,7 +101,7 @@ def main() -> int:
     try:
         print(json.dumps(execute(parser().parse_args()), sort_keys=True))
         return 0
-    except (ContractError, StateError, OSError, json.JSONDecodeError) as error:
+    except (BuilderGuardianEvidenceError, ContractError, StateError, OSError, json.JSONDecodeError) as error:
         return emit_error(error)
 
 

@@ -2,8 +2,142 @@
 
 from __future__ import annotations
 
-import subprocess
+from dataclasses import dataclass
 from pathlib import Path
+import subprocess
+
+try:
+    from .verification_evidence import VerificationEvidence, parse_verification_evidence
+except ImportError:
+    from verification_evidence import VerificationEvidence, parse_verification_evidence
+
+
+class BuilderGuardianEvidenceError(ValueError):
+    """Raised when the Builder-Guardian verification adapter is invalid."""
+
+
+@dataclass(frozen=True)
+class BuilderGuardianVerification:
+    shared: VerificationEvidence
+    task_id: str
+    run_id: str
+    repository: Path
+    worktree: Path
+    approved_commit: str
+    commands: tuple[dict, ...]
+
+    def is_ready(self, expected_commands: list[str]) -> bool:
+        return self._has_expected_commands(expected_commands) and self._all_passed()
+
+    def _has_expected_commands(self, expected: list[str]) -> bool:
+        return [item["command"] for item in self.commands] == expected
+
+    def _all_passed(self) -> bool:
+        return self.shared.verdict == "VERIFIED" and all(item["exit_code"] == 0 for item in self.commands)
+
+
+def parse_builder_guardian_verification(value: object) -> BuilderGuardianVerification:
+    fields = _mapping(value)
+    _require_fields(fields)
+    commands = _commands(fields["commands"])
+    shared = _shared_evidence(fields, commands)
+    _require_identity(fields)
+    return _verification(shared, fields, commands)
+
+
+def _verification(
+    shared: VerificationEvidence, fields: dict, commands: tuple[dict, ...]
+) -> BuilderGuardianVerification:
+    return BuilderGuardianVerification(
+        shared, fields["task_id"], fields["run_id"], Path(fields["repository"]),
+        Path(fields["worktree"]), fields["approved_commit"], commands,
+    )
+
+
+def _mapping(value: object) -> dict:
+    if not isinstance(value, dict) or not all(isinstance(key, str) for key in value):
+        raise BuilderGuardianEvidenceError("verification evidence must be an object")
+    return value
+
+
+def _require_fields(fields: dict) -> None:
+    expected = {
+        "task_id", "run_id", "repository", "worktree", "approved_commit",
+        "timestamp", "commands", "status",
+    }
+    if fields.keys() != expected:
+        raise BuilderGuardianEvidenceError("verification evidence fields are invalid")
+
+
+def _commands(value: object) -> tuple[dict, ...]:
+    if not isinstance(value, list) or not value:
+        raise BuilderGuardianEvidenceError("verification commands are required")
+    return _validated_commands(tuple(value))
+
+
+def _validated_commands(commands: tuple[dict, ...]) -> tuple[dict, ...]:
+    required = {"name", "command", "exit_code", "output"}
+    if any(not isinstance(item, dict) or item.keys() != required for item in commands):
+        raise BuilderGuardianEvidenceError("verification command shape is invalid")
+    _validate_command_text(commands)
+    _validate_exit_codes(commands)
+    return commands
+
+
+def _validate_command_text(commands: tuple[dict, ...]) -> None:
+    if any(not isinstance(item["name"], str) or not item["name"] for item in commands):
+        raise BuilderGuardianEvidenceError("verification command name is invalid")
+    if any(not isinstance(item["command"], str) or not item["command"] for item in commands):
+        raise BuilderGuardianEvidenceError("verification command is invalid")
+    if any(not isinstance(item["output"], str) for item in commands):
+        raise BuilderGuardianEvidenceError("verification output is invalid")
+
+
+def _validate_exit_codes(commands: tuple[dict, ...]) -> None:
+    if any(_invalid_exit_code(item["exit_code"]) for item in commands):
+        raise BuilderGuardianEvidenceError("verification exit code is invalid")
+
+
+def _invalid_exit_code(value: object) -> bool:
+    return value is not None and (type(value) is not int or value < 0)
+
+
+def _require_identity(fields: dict) -> None:
+    if not isinstance(fields["run_id"], str) or not fields["run_id"]:
+        raise BuilderGuardianEvidenceError("verification run identity is invalid")
+    for name in ("repository", "worktree"):
+        path = Path(fields[name])
+        if not path.is_absolute() or ".." in path.parts:
+            raise BuilderGuardianEvidenceError(f"verification {name} is invalid")
+
+
+def _shared_evidence(fields: dict, commands: tuple[dict, ...]) -> VerificationEvidence:
+    verdict = _shared_verdict(fields["status"])
+    return parse_verification_evidence(_shared_payload(fields, commands, verdict))
+
+
+def _shared_verdict(status: object) -> str:
+    if status not in {"PASSED", "FAILED"}:
+        raise BuilderGuardianEvidenceError("verification status is invalid")
+    return "VERIFIED" if status == "PASSED" else "UNVERIFIED"
+
+
+def _shared_payload(
+    fields: dict, commands: tuple[dict, ...], verdict: str
+) -> dict:
+    tiers = [
+        {"tier": index, "status": "PASS" if item["exit_code"] == 0 else "FAIL"}
+        for index, item in enumerate(commands)
+    ]
+    return {
+        "schema_version": 1,
+        "task_id": fields["task_id"],
+        "git_head": fields["approved_commit"],
+        "generated_at": fields["timestamp"],
+        "verdict": verdict,
+        "tier_results": tiers,
+        "sandbox_run": True,
+    }
 
 from builder_guardian_state import StateError, git
 

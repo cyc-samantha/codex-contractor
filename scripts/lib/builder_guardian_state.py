@@ -249,9 +249,15 @@ class PipelineState:
 
     def verification_passed(self, evidence: dict) -> bool:
         expected = [item["command"] for item in self.contract["final_checks"]]
-        actual = [item.get("command") for item in evidence.get("commands", [])]
-        exits_pass = all(item.get("exit_code") == 0 for item in evidence.get("commands", []))
-        return evidence.get("status") == "PASSED" and actual == expected and exits_pass
+        from builder_guardian_evidence import (
+            BuilderGuardianEvidenceError,
+            parse_builder_guardian_verification,
+        )
+        try:
+            parsed = parse_builder_guardian_verification(evidence)
+        except BuilderGuardianEvidenceError:
+            return False
+        return parsed.is_ready(expected)
 
     def evidence_identities(self, evidence: dict, verdict: dict) -> tuple[bool, ...]:
         return self.verification_identities(evidence) + self.guardian_identities(verdict)
