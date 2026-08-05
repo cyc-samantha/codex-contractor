@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, Iterable
 try:
     from .spawn_telemetry_shared import SpawnTelemetryError, TokenMetric
 except ImportError:
-    from spawn_telemetry_shared import SpawnTelemetryError, TokenMetric
+    from scripts.lib.spawn_telemetry_shared import SpawnTelemetryError, TokenMetric
 
 if TYPE_CHECKING:
     from .spawn_telemetry import PrReconciliation, SpawnEnvelope

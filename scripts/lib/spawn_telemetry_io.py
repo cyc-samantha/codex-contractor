@@ -14,7 +14,7 @@ try:
     from .spawn_telemetry_shared import SpawnTelemetryError
     from .writer_claim_io import append_json_line, open_harness_data, open_optional_regular
 except ImportError:
-    from spawn_telemetry_shared import SpawnTelemetryError
+    from scripts.lib.spawn_telemetry_shared import SpawnTelemetryError
     from writer_claim_io import append_json_line, open_harness_data, open_optional_regular
 
 
