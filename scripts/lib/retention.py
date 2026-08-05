@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+import secrets
 import stat
 
 
@@ -49,7 +50,11 @@ def _remove_regular(parent: int, name: str) -> bool:
     descriptor = _try_open_target(parent, name)
     if descriptor is None:
         return False
-    return _unlink_regular(parent, name, descriptor)
+    try:
+        identity = _regular_identity(descriptor)
+    finally:
+        os.close(descriptor)
+    return _quarantine_and_remove(parent, name, identity)
 
 
 def _try_open_target(parent: int, name: str) -> int | None:
@@ -59,9 +64,22 @@ def _try_open_target(parent: int, name: str) -> int | None:
         return None
 
 
-def _unlink_regular(parent: int, name: str, descriptor: int) -> bool:
+def _quarantine_and_remove(parent: int, name: str, identity: tuple[int, int]) -> bool:
+    quarantine = f".retention-{secrets.token_hex(8)}"
     try:
-        _require_regular(descriptor)
+        os.rename(name, quarantine, src_dir_fd=parent, dst_dir_fd=parent)
+    except FileNotFoundError:
+        return False
+    return _remove_quarantine(parent, quarantine, identity)
+
+
+def _remove_quarantine(parent: int, name: str, identity: tuple[int, int]) -> bool:
+    descriptor = _try_open_target(parent, name)
+    if descriptor is None:
+        raise RetentionError("quarantined target disappeared")
+    try:
+        if _regular_identity(descriptor) != identity:
+            raise RetentionError("disposable target changed during cleanup")
         os.unlink(name, dir_fd=parent)
         return True
     finally:
@@ -93,16 +111,16 @@ def _is_allowlisted(relative: Path) -> bool:
 
 def _open_parent(task_dir: Path, relative: Path) -> int:
     descriptor = os.open(task_dir, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-    try:
-        return _descend(descriptor, relative.parts)
-    except OSError:
-        os.close(descriptor)
-        raise
+    return _descend(descriptor, relative.parts)
 
 
 def _descend(descriptor: int, parts: tuple[str, ...]) -> int:
     for part in parts:
-        child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=descriptor)
+        try:
+            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=descriptor)
+        except OSError:
+            os.close(descriptor)
+            raise
         os.close(descriptor)
         descriptor = child
     return descriptor
@@ -113,6 +131,8 @@ def _open_target(parent: int, name: str) -> int:
     return os.open(name, flags, dir_fd=parent)
 
 
-def _require_regular(descriptor: int) -> None:
-    if not stat.S_ISREG(os.fstat(descriptor).st_mode):
+def _regular_identity(descriptor: int) -> tuple[int, int]:
+    metadata = os.fstat(descriptor)
+    if not stat.S_ISREG(metadata.st_mode):
         raise RetentionError("disposable target must be a regular file")
+    return metadata.st_dev, metadata.st_ino
