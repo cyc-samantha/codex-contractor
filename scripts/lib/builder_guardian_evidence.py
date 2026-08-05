@@ -7,9 +7,17 @@ from pathlib import Path
 import subprocess
 
 try:
-    from .verification_evidence import VerificationEvidence, parse_verification_evidence
+    from .verification_evidence import (
+        VerificationEvidence,
+        VerificationEvidenceError,
+        parse_verification_evidence,
+    )
 except ImportError:
-    from verification_evidence import VerificationEvidence, parse_verification_evidence
+    from verification_evidence import (
+        VerificationEvidence,
+        VerificationEvidenceError,
+        parse_verification_evidence,
+    )
 
 
 class BuilderGuardianEvidenceError(ValueError):
@@ -63,7 +71,7 @@ def _mapping(value: object) -> dict:
 def _require_fields(fields: dict) -> None:
     expected = {
         "task_id", "run_id", "repository", "worktree", "approved_commit",
-        "timestamp", "commands", "status",
+        "timestamp", "commands", "status", "sandbox_run",
     }
     if fields.keys() != expected:
         raise BuilderGuardianEvidenceError("verification evidence fields are invalid")
@@ -85,8 +93,6 @@ def _validated_commands(commands: tuple[dict, ...]) -> tuple[dict, ...]:
 
 
 def _validate_command_text(commands: tuple[dict, ...]) -> None:
-    if any(not isinstance(item["name"], str) or not item["name"] for item in commands):
-        raise BuilderGuardianEvidenceError("verification command name is invalid")
     if any(not isinstance(item["command"], str) or not item["command"] for item in commands):
         raise BuilderGuardianEvidenceError("verification command is invalid")
     if any(not isinstance(item["output"], str) for item in commands):
@@ -106,18 +112,27 @@ def _require_identity(fields: dict) -> None:
     if not isinstance(fields["run_id"], str) or not fields["run_id"]:
         raise BuilderGuardianEvidenceError("verification run identity is invalid")
     for name in ("repository", "worktree"):
-        path = Path(fields[name])
-        if not path.is_absolute() or ".." in path.parts:
-            raise BuilderGuardianEvidenceError(f"verification {name} is invalid")
+        _require_path_identity(fields[name], name)
+
+
+def _require_path_identity(value: object, name: str) -> None:
+    if not isinstance(value, str):
+        raise BuilderGuardianEvidenceError(f"verification {name} is invalid")
+    path = Path(value)
+    if not path.is_absolute() or ".." in path.parts:
+        raise BuilderGuardianEvidenceError(f"verification {name} is invalid")
 
 
 def _shared_evidence(fields: dict, commands: tuple[dict, ...]) -> VerificationEvidence:
     verdict = _shared_verdict(fields["status"])
-    return parse_verification_evidence(_shared_payload(fields, commands, verdict))
+    try:
+        return parse_verification_evidence(_shared_payload(fields, commands, verdict))
+    except (VerificationEvidenceError, TypeError, KeyError) as error:
+        raise BuilderGuardianEvidenceError("shared verification evidence is invalid") from error
 
 
 def _shared_verdict(status: object) -> str:
-    if status not in {"PASSED", "FAILED"}:
+    if not isinstance(status, str) or status not in {"PASSED", "FAILED"}:
         raise BuilderGuardianEvidenceError("verification status is invalid")
     return "VERIFIED" if status == "PASSED" else "UNVERIFIED"
 
@@ -136,7 +151,7 @@ def _shared_payload(
         "generated_at": fields["timestamp"],
         "verdict": verdict,
         "tier_results": tiers,
-        "sandbox_run": True,
+        "sandbox_run": fields["sandbox_run"],
     }
 
 from builder_guardian_state import StateError, git

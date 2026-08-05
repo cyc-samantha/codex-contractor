@@ -25,6 +25,7 @@ def evidence(**overrides: object) -> dict[str, object]:
             {"name": "unit", "command": "true", "exit_code": 0, "output": ""},
         ],
         "status": "PASSED",
+        "sandbox_run": True,
     }
     value.update(overrides)
     return value
@@ -71,3 +72,16 @@ def test_builder_guardian_rejects_boolean_exit_codes() -> None:
         parse_builder_guardian_verification(
             evidence(commands=[{"name": "unit", "command": "true", "exit_code": True, "output": ""}])
         )
+
+
+def test_builder_guardian_preserves_nullable_command_names() -> None:
+    parsed = parse_builder_guardian_verification(
+        evidence(commands=[{"name": None, "command": "true", "exit_code": 0, "output": ""}])
+    )
+
+    assert parsed.is_ready(expected_commands=["true"])
+
+
+def test_builder_guardian_wraps_malformed_shared_evidence() -> None:
+    with pytest.raises(BuilderGuardianEvidenceError):
+        parse_builder_guardian_verification(evidence(sandbox_run="yes"))
