@@ -10,8 +10,11 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parents[1]))
 
 from scripts.lib.spawn_telemetry import (  # noqa: E402
+    ReconciliationQuality,
+    RoleEffortAggregate,
     SpawnTelemetryError,
     SpawnTelemetryStore,
+    TokenMetric,
     aggregate_spawn_usage,
     parse_spawn_envelope,
 )
@@ -189,3 +192,72 @@ def test_rejects_unknown_reconciliation_schema_version(
 
     with pytest.raises(SpawnTelemetryError, match="schema_version"):
         store.read_reconciliations()
+
+
+def test_reconciliation_preserves_quality_metadata(tmp_path: Path) -> None:
+    store = SpawnTelemetryStore(tmp_path / "spawn-events.jsonl")
+    store.record(parse_spawn_envelope(envelope()))
+    quality = ReconciliationQuality(
+        verdict="APPROVE",
+        finding_count=2,
+        retry_count=1,
+        injected_learning_tokens=TokenMetric(8, None),
+    )
+
+    result = store.reconcile_pr("t13b-t13d-dispatch", "run-01", "32", quality=quality)
+
+    assert result.quality == quality
+    assert store.read_reconciliations() == (result,)
+
+
+def test_quality_metadata_rejects_invalid_values(tmp_path: Path) -> None:
+    store = SpawnTelemetryStore(tmp_path / "spawn-events.jsonl")
+    store.record(parse_spawn_envelope(envelope()))
+
+    invalid = ReconciliationQuality(
+        verdict="UNKNOWN",
+        finding_count=-1,
+        retry_count=0,
+        injected_learning_tokens=TokenMetric(None, None),
+    )
+    with pytest.raises(SpawnTelemetryError, match="quality"):
+        store.reconcile_pr("t13b-t13d-dispatch", "run-01", "32", quality=invalid)
+
+
+def test_reconciliation_breaks_down_usage_by_role_and_effort(tmp_path: Path) -> None:
+    store = SpawnTelemetryStore(tmp_path / "spawn-events.jsonl")
+    store.record(parse_spawn_envelope(envelope()))
+    store.record(parse_spawn_envelope(
+        envelope(
+            event_id="telemetry-02",
+            role="code_reviewer",
+            role_instance_id="code_reviewer-01",
+            session_id="session-code_reviewer-01",
+            requested_reasoning_effort="medium",
+            actual_reasoning_effort="medium",
+            input_tokens={"value": None, "unavailable_reason": "provider omitted input"},
+        )
+    ))
+
+    result = store.reconcile_pr("t13b-t13d-dispatch", "run-01", "32")
+
+    assert result.role_effort_breakdown == (
+        RoleEffortAggregate("code_reviewer", "medium", 50, ("telemetry-02.input_tokens",)),
+        RoleEffortAggregate("software_engineer", "high", 150, ()),
+    )
+
+
+def test_reconciliation_is_idempotent_for_quality_metadata(tmp_path: Path) -> None:
+    store = SpawnTelemetryStore(tmp_path / "spawn-events.jsonl")
+    store.record(parse_spawn_envelope(envelope()))
+    quality = ReconciliationQuality("APPROVE", 0, 0, TokenMetric(0, None))
+
+    first = store.reconcile_pr("t13b-t13d-dispatch", "run-01", "32", quality=quality)
+    second = store.reconcile_pr("t13b-t13d-dispatch", "run-01", "32", quality=quality)
+
+    assert first == second
+    with pytest.raises(SpawnTelemetryError, match="quality"):
+        store.reconcile_pr(
+            "t13b-t13d-dispatch", "run-01", "32",
+            quality=ReconciliationQuality("CHANGES_REQUESTED", 1, 0, TokenMetric(0, None)),
+        )

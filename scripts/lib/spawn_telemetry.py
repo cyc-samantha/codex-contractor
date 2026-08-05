@@ -1,22 +1,12 @@
 """Validate, persist, aggregate, and reconcile spawn telemetry."""
 from __future__ import annotations
 from dataclasses import asdict, dataclass
-from contextlib import contextmanager
-import fcntl
-import json
 import os
 from pathlib import Path
 import re
-import stat
 from typing import Any, Iterable
-from scripts.lib.writer_claim_io import (
-    append_json_line,
-    open_harness_data,
-    open_optional_regular,
-)
-
-class SpawnTelemetryError(ValueError):
-    """Raised when spawn telemetry is incomplete or contradictory."""
+from scripts.lib.writer_claim_io import open_harness_data
+from scripts.lib.spawn_telemetry_shared import SpawnTelemetryError, TokenMetric
 
 IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 TOKEN_FIELDS = ("input_tokens", "cached_input_tokens", "output_tokens")
@@ -29,11 +19,6 @@ ENVELOPE_FIELDS = frozenset(
         "output_tokens", "duration_ms", "retry_cycle_id",
     }
 )
-
-@dataclass(frozen=True)
-class TokenMetric:
-    value: int | None
-    unavailable_reason: str | None
 
 @dataclass(frozen=True)
 class SpawnEnvelope:
@@ -61,6 +46,7 @@ class SpawnUsageAggregate:
     known_token_total: int
     unknown_token_fields: tuple[str, ...]
 
+
 @dataclass(frozen=True)
 class PrReconciliation:
     schema_version: int
@@ -69,6 +55,8 @@ class PrReconciliation:
     pr_id: str
     known_token_total: int
     unknown_token_fields: tuple[str, ...]
+    quality: ReconciliationQuality | None = None
+    role_effort_breakdown: tuple[RoleEffortAggregate, ...] = ()
 
 def parse_spawn_envelope(value: object) -> SpawnEnvelope:
     fields = _mapping(value, "spawn envelope")
@@ -114,6 +102,7 @@ def aggregate_spawn_usage(events: Iterable[SpawnEnvelope]) -> SpawnUsageAggregat
                 total += metric.value
     return SpawnUsageAggregate(total, tuple(unknown))
 
+
 class SpawnTelemetryStore:
     def __init__(self, events_path: Path) -> None:
         if not events_path.is_absolute() or ".." in events_path.parts:
@@ -134,12 +123,20 @@ class SpawnTelemetryStore:
     def read_events(self) -> tuple[SpawnEnvelope, ...]:
         return tuple(parse_spawn_envelope(item) for item in _read_jsonl(self.events_path))
 
-    def reconcile_pr(self, task_id: str, run_id: str, pr_id: str) -> PrReconciliation:
+    def reconcile_pr(
+        self,
+        task_id: str,
+        run_id: str,
+        pr_id: str,
+        *,
+        quality: ReconciliationQuality | None = None,
+    ) -> PrReconciliation:
         identifiers = (
             _identifier(task_id, "task_id"),
             _identifier(run_id, "run_id"),
             _identifier(pr_id, "pr_id"),
         )
+        _validate_quality(quality)
         with _exclusive_lock(self.events_path):
             with _exclusive_lock(self.reconciliations_path):
                 matching = _matching_reconciliation(
@@ -147,14 +144,19 @@ class SpawnTelemetryStore:
                 )
                 if matching is not None:
                     _require_same_pr(matching, pr_id)
+                    _require_same_quality(matching, quality)
                     return matching
-                return self._record_reconciliation(*identifiers)
+                return self._record_reconciliation(*identifiers, quality)
 
     def read_reconciliations(self) -> tuple[PrReconciliation, ...]:
         return tuple(_parse_reconciliation(item) for item in _read_jsonl(self.reconciliations_path))
 
     def _record_reconciliation(
-        self, task_id: str, run_id: str, pr_id: str
+        self,
+        task_id: str,
+        run_id: str,
+        pr_id: str,
+        quality: ReconciliationQuality | None,
     ) -> PrReconciliation:
         events = tuple(
             event for event in self.read_events()
@@ -166,6 +168,7 @@ class SpawnTelemetryStore:
         record = PrReconciliation(
             1, task_id, run_id, pr_id,
             usage.known_token_total, usage.unknown_token_fields,
+            quality, aggregate_role_effort(events),
         )
         _append_durable(self.reconciliations_path, _serialize(record))
         return record
@@ -214,75 +217,8 @@ def _nonnegative_integer(value: object, name: str) -> int:
 def _serialize(value: object) -> dict[str, Any]:
     return asdict(value)
 
-def _append_durable(path: Path, value: dict[str, Any]) -> None:
-    directory = open_harness_data(path.parent, create=True)
-    try:
-        append_json_line(directory, path.name, value)
-    finally:
-        os.close(directory)
-
-@contextmanager
-def _exclusive_lock(path: Path):
-    directory = open_harness_data(path.parent, create=True)
-    descriptor = _open_lock_file(directory, f".{path.name}.lock")
-    try:
-        fcntl.flock(descriptor, fcntl.LOCK_EX)
-        yield
-    finally:
-        fcntl.flock(descriptor, fcntl.LOCK_UN)
-        os.close(descriptor)
-        os.close(directory)
-
-def _open_lock_file(directory: int, name: str) -> int:
-    descriptor = os.open(
-        name, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600, dir_fd=directory
-    )
-    metadata = os.fstat(descriptor)
-    if stat.S_ISREG(metadata.st_mode) and metadata.st_nlink == 1:
-        return descriptor
-    os.close(descriptor)
-    raise SpawnTelemetryError("telemetry lock must be a single-link regular file")
-
-def _read_jsonl(path: Path) -> tuple[dict[str, Any], ...]:
-    try:
-        directory = open_harness_data(path.parent, create=False)
-    except FileNotFoundError:
-        return ()
-    try:
-        descriptor = open_optional_regular(directory, path.name)
-        if descriptor is None:
-            return ()
-        with os.fdopen(descriptor, encoding="utf-8") as stream:
-            return tuple(json.loads(line) for line in stream)
-    except (json.JSONDecodeError, OSError, UnicodeDecodeError) as error:
-        raise SpawnTelemetryError(f"cannot read telemetry file: {path.name}") from error
-    finally:
-        os.close(directory)
-
 def _parse_reconciliation(value: object) -> PrReconciliation:
-    fields = _mapping(value, "PR reconciliation")
-    expected = frozenset(
-        {
-            "schema_version", "task_id", "run_id", "pr_id",
-            "known_token_total", "unknown_token_fields",
-        }
-    )
-    _exact_fields(fields, expected, "PR reconciliation")
-    if type(fields["schema_version"]) is not int or fields["schema_version"] != 1:
-        raise SpawnTelemetryError("unsupported reconciliation schema_version")
-    unknown = fields["unknown_token_fields"]
-    if not isinstance(unknown, list) or not all(isinstance(item, str) for item in unknown):
-        raise SpawnTelemetryError("unknown_token_fields must be a list of strings")
-    return PrReconciliation(
-        schema_version=fields["schema_version"],
-        task_id=_identifier(fields["task_id"], "task_id"),
-        run_id=_identifier(fields["run_id"], "run_id"),
-        pr_id=_identifier(fields["pr_id"], "pr_id"),
-        known_token_total=_nonnegative_integer(
-            fields["known_token_total"], "known_token_total"
-        ),
-        unknown_token_fields=tuple(unknown),
-    )
+    return parse_reconciliation(value)
 
 def _matching_reconciliation(
     records: tuple[PrReconciliation, ...], task_id: str, run_id: str
@@ -298,3 +234,38 @@ def _matching_reconciliation(
 def _require_same_pr(record: PrReconciliation, pr_id: str) -> None:
     if record.pr_id != pr_id:
         raise SpawnTelemetryError("task run already reconciled to another PR")
+
+
+def _validate_quality(quality: ReconciliationQuality | None) -> None:
+    validate_quality(quality)
+
+
+def _require_same_quality(
+    record: PrReconciliation, quality: ReconciliationQuality | None
+) -> None:
+    require_same_quality(record, quality)
+
+
+try:
+    from .spawn_telemetry_quality import (
+        ReconciliationQuality,
+        RoleEffortAggregate,
+        aggregate_role_effort,
+        parse_reconciliation,
+        require_same_quality,
+        validate_quality,
+    )
+except ImportError:
+    from spawn_telemetry_quality import (
+        ReconciliationQuality,
+        RoleEffortAggregate,
+        aggregate_role_effort,
+        parse_reconciliation,
+        require_same_quality,
+        validate_quality,
+    )
+
+try:
+    from .spawn_telemetry_io import _append_durable, _exclusive_lock, _read_jsonl
+except ImportError:
+    from spawn_telemetry_io import _append_durable, _exclusive_lock, _read_jsonl
