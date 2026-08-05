@@ -6,9 +6,7 @@ from pathlib import Path
 import re
 from typing import Any, Iterable
 from scripts.lib.writer_claim_io import open_harness_data
-
-class SpawnTelemetryError(ValueError):
-    """Raised when spawn telemetry is incomplete or contradictory."""
+from scripts.lib.spawn_telemetry_shared import SpawnTelemetryError, TokenMetric
 
 IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 TOKEN_FIELDS = ("input_tokens", "cached_input_tokens", "output_tokens")
@@ -21,11 +19,6 @@ ENVELOPE_FIELDS = frozenset(
         "output_tokens", "duration_ms", "retry_cycle_id",
     }
 )
-
-@dataclass(frozen=True)
-class TokenMetric:
-    value: int | None
-    unavailable_reason: str | None
 
 @dataclass(frozen=True)
 class SpawnEnvelope:

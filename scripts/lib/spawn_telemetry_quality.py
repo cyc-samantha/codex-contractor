@@ -3,38 +3,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Iterable
+from typing import TYPE_CHECKING, Any, Iterable
 
 try:
-    from .spawn_telemetry import (
-        PrReconciliation,
-        SpawnEnvelope,
-        SpawnTelemetryError,
-        TokenMetric,
-        _exact_fields,
-        _identifier,
-        _mapping,
-        _metric,
-        _nonnegative_integer,
-        _serialize,
-        _text,
-        aggregate_spawn_usage,
-    )
+    from .spawn_telemetry_shared import SpawnTelemetryError, TokenMetric
 except ImportError:
-    from spawn_telemetry import (
-        PrReconciliation,
-        SpawnEnvelope,
-        SpawnTelemetryError,
-        TokenMetric,
-        _exact_fields,
-        _identifier,
-        _mapping,
-        _metric,
-        _nonnegative_integer,
-        _serialize,
-        _text,
-        aggregate_spawn_usage,
-    )
+    from spawn_telemetry_shared import SpawnTelemetryError, TokenMetric
+
+if TYPE_CHECKING:
+    from .spawn_telemetry import PrReconciliation, SpawnEnvelope
 
 
 QUALITY_VERDICTS = frozenset({
@@ -70,7 +47,7 @@ def aggregate_role_effort(events: Iterable[SpawnEnvelope]) -> tuple[RoleEffortAg
 def _role_effort_record(
     key: tuple[str, str], events: Iterable[SpawnEnvelope]
 ) -> RoleEffortAggregate:
-    usage = aggregate_spawn_usage(events)
+    usage = _spawn_module().aggregate_spawn_usage(events)
     return RoleEffortAggregate(key[0], key[1], usage.known_token_total, usage.unknown_token_fields)
 
 
@@ -84,10 +61,10 @@ def validate_quality(quality: ReconciliationQuality | None) -> None:
     _validate_quality_counts(quality)
     _validate_learning_tokens(quality)
 def _validate_quality_counts(quality: ReconciliationQuality) -> None:
-    _nonnegative_integer(quality.finding_count, "quality finding_count")
-    _nonnegative_integer(quality.retry_count, "quality retry_count")
+    _spawn_module()._nonnegative_integer(quality.finding_count, "quality finding_count")
+    _spawn_module()._nonnegative_integer(quality.retry_count, "quality retry_count")
 def _validate_learning_tokens(quality: ReconciliationQuality) -> None:
-    _metric(_serialize(quality.injected_learning_tokens), "quality injected_learning_tokens")
+    _spawn_module()._metric(_spawn_module()._serialize(quality.injected_learning_tokens), "quality injected_learning_tokens")
 
 
 def require_same_quality(
@@ -98,7 +75,7 @@ def require_same_quality(
 
 
 def parse_reconciliation(value: object) -> PrReconciliation:
-    fields = _mapping(value, "PR reconciliation")
+    fields = _spawn_module()._mapping(value, "PR reconciliation")
     _validate_reconciliation_fields(fields)
     return _reconciliation_from_fields(fields)
 
@@ -113,27 +90,30 @@ def _validate_reconciliation_fields(fields: dict[str, Any]) -> None:
 
 
 def _reconciliation_from_fields(fields: dict[str, Any]) -> PrReconciliation:
+    module = _spawn_module()
     unknown = _unknown_fields(fields["unknown_token_fields"])
     quality = _parse_quality(fields.get("quality"))
     breakdown = _parse_breakdown(fields.get("role_effort_breakdown", []))
-    return _build_reconciliation(fields, unknown, quality, breakdown)
+    return _build_reconciliation(module, fields, unknown, quality, breakdown)
 def _build_reconciliation(
-    fields: dict[str, Any], unknown: list[str], quality: ReconciliationQuality | None,
+    module: Any, fields: dict[str, Any], unknown: list[str], quality: ReconciliationQuality | None,
     breakdown: tuple[RoleEffortAggregate, ...],
 ) -> PrReconciliation:
-    return PrReconciliation(fields["schema_version"], _identifier(fields["task_id"], "task_id"), _identifier(fields["run_id"], "run_id"), _identifier(fields["pr_id"], "pr_id"), _nonnegative_integer(fields["known_token_total"], "known_token_total"), tuple(unknown), quality, breakdown)
+    return module.PrReconciliation(fields["schema_version"], module._identifier(fields["task_id"], "task_id"), module._identifier(fields["run_id"], "run_id"), module._identifier(fields["pr_id"], "pr_id"), module._nonnegative_integer(fields["known_token_total"], "known_token_total"), tuple(unknown), quality, breakdown)
 
 
 def _parse_quality(value: object) -> ReconciliationQuality | None:
     if value is None:
         return None
-    fields = _mapping(value, "quality")
-    _exact_fields(fields, {"verdict", "finding_count", "retry_count", "injected_learning_tokens"}, "quality")
+    module = _spawn_module()
+    fields = module._mapping(value, "quality")
+    module._exact_fields(fields, {"verdict", "finding_count", "retry_count", "injected_learning_tokens"}, "quality")
     quality = _build_quality(fields)
     validate_quality(quality)
     return quality
 def _build_quality(fields: dict[str, Any]) -> ReconciliationQuality:
-    return ReconciliationQuality(_text(fields["verdict"], "quality verdict"), fields["finding_count"], fields["retry_count"], _metric(fields["injected_learning_tokens"], "quality injected_learning_tokens"))
+    module = _spawn_module()
+    return ReconciliationQuality(module._text(fields["verdict"], "quality verdict"), fields["finding_count"], fields["retry_count"], module._metric(fields["injected_learning_tokens"], "quality injected_learning_tokens"))
 
 
 def _parse_breakdown(value: object) -> tuple[RoleEffortAggregate, ...]:
@@ -149,15 +129,24 @@ def _validate_breakdown_order(records: tuple[RoleEffortAggregate, ...]) -> None:
 
 
 def _parse_breakdown_record(value: object) -> RoleEffortAggregate:
-    fields = _mapping(value, "role effort aggregate")
-    _exact_fields(fields, {"role", "reasoning_effort", "known_token_total", "unknown_token_fields"}, "role effort aggregate")
-    return _build_breakdown(fields)
-def _build_breakdown(fields: dict[str, Any]) -> RoleEffortAggregate:
+    module = _spawn_module()
+    fields = module._mapping(value, "role effort aggregate")
+    module._exact_fields(fields, {"role", "reasoning_effort", "known_token_total", "unknown_token_fields"}, "role effort aggregate")
+    return _build_breakdown(module, fields)
+def _build_breakdown(module: Any, fields: dict[str, Any]) -> RoleEffortAggregate:
     unknown = _unknown_fields(fields["unknown_token_fields"])
-    return RoleEffortAggregate(_text(fields["role"], "role"), _text(fields["reasoning_effort"], "reasoning_effort"), _nonnegative_integer(fields["known_token_total"], "known_token_total"), tuple(unknown))
+    return RoleEffortAggregate(module._text(fields["role"], "role"), module._text(fields["reasoning_effort"], "reasoning_effort"), module._nonnegative_integer(fields["known_token_total"], "known_token_total"), tuple(unknown))
 
 
 def _unknown_fields(value: object) -> list[str]:
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
         raise SpawnTelemetryError("unknown token fields must be strings")
     return value
+
+
+def _spawn_module() -> Any:
+    try:
+        from . import spawn_telemetry
+    except ImportError:
+        import spawn_telemetry
+    return spawn_telemetry

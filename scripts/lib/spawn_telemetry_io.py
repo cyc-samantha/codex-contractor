@@ -11,10 +11,10 @@ import stat
 from typing import Any
 
 try:
-    from .spawn_telemetry import SpawnTelemetryError
+    from .spawn_telemetry_shared import SpawnTelemetryError
     from .writer_claim_io import append_json_line, open_harness_data, open_optional_regular
 except ImportError:
-    from spawn_telemetry import SpawnTelemetryError
+    from spawn_telemetry_shared import SpawnTelemetryError
     from writer_claim_io import append_json_line, open_harness_data, open_optional_regular
 
 
