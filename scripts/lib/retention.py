@@ -65,12 +65,38 @@ def _try_open_target(parent: int, name: str) -> int | None:
 
 
 def _quarantine_and_remove(parent: int, name: str, identity: tuple[int, int]) -> bool:
+    quarantine = _quarantine_name(parent)
+    quarantine_fd = _open_quarantine(parent, quarantine)
+    try:
+        os.rename(name, name, src_dir_fd=parent, dst_dir_fd=quarantine_fd)
+    except FileNotFoundError:
+        _close_quarantine(parent, quarantine, quarantine_fd)
+        return False
+    try:
+        return _remove_quarantine(quarantine_fd, name, identity)
+    finally:
+        _close_quarantine(parent, quarantine, quarantine_fd)
+
+
+def _quarantine_name(parent: int) -> str:
     quarantine = f".retention-{secrets.token_hex(8)}"
     try:
-        os.rename(name, quarantine, src_dir_fd=parent, dst_dir_fd=parent)
+        os.mkdir(quarantine, 0o700, dir_fd=parent)
+    except FileExistsError as error:
+        raise RetentionError("retention quarantine collision") from error
+    return quarantine
+
+
+def _open_quarantine(parent: int, name: str) -> int:
+    return os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
+
+
+def _close_quarantine(parent: int, name: str, descriptor: int) -> None:
+    os.close(descriptor)
+    try:
+        os.rmdir(name, dir_fd=parent)
     except FileNotFoundError:
-        return False
-    return _remove_quarantine(parent, quarantine, identity)
+        return
 
 
 def _remove_quarantine(parent: int, name: str, identity: tuple[int, int]) -> bool:

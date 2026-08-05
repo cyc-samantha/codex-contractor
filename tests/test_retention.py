@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from scripts.lib import retention
 from scripts.lib.retention import RetentionError, cleanup_disposable, is_disposable_path
 
 
@@ -55,3 +56,33 @@ def test_cleanup_removes_only_existing_regular_disposable_files(tmp_path: Path) 
         cleanup_disposable(task, directory)
     with pytest.raises(RetentionError):
         cleanup_disposable(task, link)
+
+
+def test_cleanup_rejects_replaced_quarantine_object(tmp_path: Path) -> None:
+    task = tmp_path / "task-01"
+    scratchpad = task / "scratchpad"
+    scratchpad.mkdir(parents=True)
+    target = scratchpad / "notes.md"
+    target.write_text("discard")
+    replacement = scratchpad / "replacement.md"
+    replacement.write_text("keep")
+    descriptor = target.open()
+    try:
+        identity = retention._regular_identity(descriptor.fileno())
+    finally:
+        descriptor.close()
+    parent = retention._open_parent(task, Path("scratchpad"))
+    try:
+        with pytest.raises(RetentionError):
+            retention._remove_quarantine(parent, "replacement.md", identity)
+    finally:
+        retention.os.close(parent)
+    assert replacement.read_text() == "keep"
+
+
+def test_cleanup_reports_nested_parent_failure_without_descriptor_error(tmp_path: Path) -> None:
+    task = tmp_path / "task-01"
+    task.mkdir()
+
+    with pytest.raises(FileNotFoundError):
+        retention._open_parent(task, Path("scratchpad"))
