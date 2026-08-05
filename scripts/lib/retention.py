@@ -50,11 +50,15 @@ def _remove_regular(parent: int, name: str) -> bool:
     descriptor = _try_open_target(parent, name)
     if descriptor is None:
         return False
+    identity = _validated_identity(descriptor)
+    return _quarantine_and_remove(parent, name, identity)
+
+
+def _validated_identity(descriptor: int) -> tuple[int, int]:
     try:
-        identity = _regular_identity(descriptor)
+        return _regular_identity(descriptor)
     finally:
         os.close(descriptor)
-    return _quarantine_and_remove(parent, name, identity)
 
 
 def _try_open_target(parent: int, name: str) -> int | None:
@@ -67,15 +71,31 @@ def _try_open_target(parent: int, name: str) -> int | None:
 def _quarantine_and_remove(parent: int, name: str, identity: tuple[int, int]) -> bool:
     quarantine = _quarantine_name(parent)
     quarantine_fd = _open_quarantine(parent, quarantine)
-    try:
-        os.rename(name, name, src_dir_fd=parent, dst_dir_fd=quarantine_fd)
-    except FileNotFoundError:
-        _close_quarantine(parent, quarantine, quarantine_fd)
+    if not _move_to_quarantine(parent, quarantine_fd, name):
+        _finish_quarantine(parent, quarantine, quarantine_fd)
         return False
+    return _remove_after_quarantine(parent, quarantine, quarantine_fd, name, identity)
+
+
+def _move_to_quarantine(parent: int, quarantine: int, name: str) -> bool:
     try:
-        return _remove_quarantine(quarantine_fd, name, identity)
-    finally:
-        _close_quarantine(parent, quarantine, quarantine_fd)
+        os.rename(name, name, src_dir_fd=parent, dst_dir_fd=quarantine)
+    except FileNotFoundError:
+        return False
+    return True
+
+
+def _remove_after_quarantine(
+    parent: int, quarantine: str, descriptor: int, name: str, identity: tuple[int, int]
+) -> bool:
+    try:
+        result = _remove_quarantine(descriptor, name, identity)
+    except Exception:
+        _finish_quarantine(parent, quarantine, descriptor)
+        raise
+    if not _finish_quarantine(parent, quarantine, descriptor):
+        raise RetentionError("retention quarantine could not be removed")
+    return result
 
 
 def _quarantine_name(parent: int) -> str:
@@ -91,12 +111,17 @@ def _open_quarantine(parent: int, name: str) -> int:
     return os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=parent)
 
 
-def _close_quarantine(parent: int, name: str, descriptor: int) -> None:
+def _finish_quarantine(parent: int, name: str, descriptor: int) -> bool:
     os.close(descriptor)
+    return _remove_quarantine_directory(parent, name)
+
+
+def _remove_quarantine_directory(parent: int, name: str) -> bool:
     try:
         os.rmdir(name, dir_fd=parent)
-    except FileNotFoundError:
-        return
+    except OSError as error:
+        return isinstance(error, FileNotFoundError)
+    return True
 
 
 def _remove_quarantine(parent: int, name: str, identity: tuple[int, int]) -> bool:
@@ -104,12 +129,20 @@ def _remove_quarantine(parent: int, name: str, identity: tuple[int, int]) -> boo
     if descriptor is None:
         raise RetentionError("quarantined target disappeared")
     try:
-        if _regular_identity(descriptor) != identity:
-            raise RetentionError("disposable target changed during cleanup")
-        os.unlink(name, dir_fd=parent)
-        return True
+        return _unlink_quarantine(parent, name, descriptor, identity)
     finally:
         os.close(descriptor)
+
+
+def _unlink_quarantine(parent: int, name: str, descriptor: int, identity: tuple[int, int]) -> bool:
+    _require_identity(descriptor, identity)
+    os.unlink(name, dir_fd=parent)
+    return True
+
+
+def _require_identity(descriptor: int, identity: tuple[int, int]) -> None:
+    if _regular_identity(descriptor) != identity:
+        raise RetentionError("disposable target changed during cleanup")
 
 
 def _relative_path(task_dir: Path, target: Path) -> Path:
@@ -142,14 +175,18 @@ def _open_parent(task_dir: Path, relative: Path) -> int:
 
 def _descend(descriptor: int, parts: tuple[str, ...]) -> int:
     for part in parts:
-        try:
-            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=descriptor)
-        except OSError:
-            os.close(descriptor)
-            raise
+        child = _open_child(descriptor, part)
         os.close(descriptor)
         descriptor = child
     return descriptor
+
+
+def _open_child(descriptor: int, part: str) -> int:
+    try:
+        return os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=descriptor)
+    except OSError:
+        os.close(descriptor)
+        raise
 
 
 def _open_target(parent: int, name: str) -> int:
@@ -161,4 +198,8 @@ def _regular_identity(descriptor: int) -> tuple[int, int]:
     metadata = os.fstat(descriptor)
     if not stat.S_ISREG(metadata.st_mode):
         raise RetentionError("disposable target must be a regular file")
+    return _identity(metadata)
+
+
+def _identity(metadata: os.stat_result) -> tuple[int, int]:
     return metadata.st_dev, metadata.st_ino

@@ -74,10 +74,12 @@ def test_cleanup_rejects_replaced_quarantine_object(tmp_path: Path) -> None:
     parent = retention._open_parent(task, Path("scratchpad"))
     try:
         with pytest.raises(RetentionError):
-            retention._remove_quarantine(parent, "replacement.md", identity)
+            retention._quarantine_and_remove(parent, "replacement.md", identity)
     finally:
         retention.os.close(parent)
-    assert replacement.read_text() == "keep"
+    assert not replacement.exists()
+    quarantine = next(scratchpad.glob(".retention-*"))
+    assert (quarantine / "replacement.md").read_text() == "keep"
 
 
 def test_cleanup_reports_nested_parent_failure_without_descriptor_error(tmp_path: Path) -> None:
