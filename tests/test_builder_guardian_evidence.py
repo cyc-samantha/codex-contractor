@@ -11,6 +11,7 @@ from builder_guardian_evidence import (  # noqa: E402
     BuilderGuardianEvidenceError,
     parse_builder_guardian_verification,
 )
+from builder_guardian_verify import run_check  # noqa: E402
 
 
 def evidence(**overrides: object) -> dict[str, object]:
@@ -85,3 +86,12 @@ def test_builder_guardian_preserves_nullable_command_names() -> None:
 def test_builder_guardian_wraps_malformed_shared_evidence() -> None:
     with pytest.raises(BuilderGuardianEvidenceError):
         parse_builder_guardian_verification(evidence(sandbox_run="yes"))
+
+
+def test_invalid_verification_commands_return_failed_evidence(tmp_path: Path) -> None:
+    result = run_check({"name": "unit", "command": "true && true"}, tmp_path)
+
+    assert result == {
+        "name": "unit", "command": "true && true", "exit_code": None,
+        "output": "verification blocked",
+    }

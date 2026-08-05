@@ -23,8 +23,8 @@ def run_check(check: dict, checkout: Path) -> dict:
     try:
         result = invoke_check(check, checkout)
         return check_result(check, result.exit_code, _result_output(result))
-    except subprocess.TimeoutExpired:
-        return check_result(check, None, "timeout")
+    except (FinalVerificationError, StateError):
+        return check_result(check, None, "verification blocked")
 
 
 def _result_output(result) -> str:
